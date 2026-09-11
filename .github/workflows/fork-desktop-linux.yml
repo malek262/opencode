@@ -139,7 +139,7 @@ jobs:
         id: version
         run: |
           BASE=$(node -p "require('./packages/desktop/package.json').version")
-          VERSION="${BASE}-fork.pr48344.${{ github.run_number }}"
+          VERSION="${BASE}-sidebar.${{ github.run_number }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building OpenCode Desktop version $VERSION"
 
@@ -199,9 +199,9 @@ jobs:
             exit 1
           fi
           TAG="v${VERSION}"
-          NOTES="Fork build of anomalyco/opencode with PR #48344 (feat(desktop): experimental app sidebar with new chat, projects, recents) merged. Commit: ${{ github.sha }}"
+          NOTES="Fork build of anomalyco/opencode with the sidebar navigation feature. Commit: ${{ github.sha }}"
           gh release create "$TAG" "${files[@]}" \
-            --title "OpenCode Desktop (PR #48344 sidebar) $TAG" \
+            --title "OpenCode Desktop $TAG" \
             --notes "$NOTES" \
             --prerelease \
             --target "${{ github.sha }}"

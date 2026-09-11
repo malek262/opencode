@@ -1,0 +1,54 @@
+name: fork-release-retry
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run ID holding the opencode-desktop-linux-x64 artifact"
+        required: true
+        type: string
+      version:
+        description: "Version string for the release tag (e.g. 1.18.30-fork.pr48344.2)"
+        required: true
+        type: string
+      commit_sha:
+        description: "Commit SHA the artifact was built from"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: create release from existing artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: opencode-desktop-linux-x64
+          path: dist
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.{AppImage,deb,rpm,blockmap} dist/latest*.yml dist/latest*.json)
+          if (( ${#files[@]} == 0 )); then
+            echo "No desktop release assets found"
+            ls -la dist/ || true
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          NOTES="Fork build of anomalyco/opencode with PR #48344 (feat(desktop): experimental app sidebar with new chat, projects, recents) merged. Commit: ${{ inputs.commit_sha }}"
+          gh release create "$TAG" "${files[@]}" \
+            --title "OpenCode Desktop (PR #48344 sidebar) $TAG" \
+            --notes "$NOTES" \
+            --prerelease \
+            --target "${{ inputs.commit_sha }}"

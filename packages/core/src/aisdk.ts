@@ -5,6 +5,7 @@ import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { Cause, Context, Effect, Layer, Schema, Scope } from "effect"
 import { ModelV2 } from "./model"
 import { ProviderV2 } from "./provider"
+import { createUndiciDispatcher } from "./util/undici-dispatcher"
 import { State } from "./state"
 
 type SDK = any
@@ -82,6 +83,9 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
   const customFetch = options.fetch
   const chunkTimeout = options.chunkTimeout
   delete options.chunkTimeout
+  // Node's undici transport caps header/body waits at 300s by default; derive an
+  // explicit dispatcher from the same options so they can actually be lifted.
+  const dispatcher = typeof customFetch === "function" ? undefined : createUndiciDispatcher({ chunkTimeout })
   options.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const opts = { ...(init ?? {}) }
     const signals = [
@@ -112,8 +116,9 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
 
     const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
       ...opts,
+      ...(dispatcher ? { dispatcher } : {}),
       timeout: false,
-    })
+    } as RequestInit)
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }

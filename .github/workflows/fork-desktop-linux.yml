@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - sidebar-navigation
+      - fix/desktop-undici-timeout
   workflow_dispatch:
 
 concurrency:
@@ -177,7 +178,7 @@ jobs:
   release:
     name: create release
     needs: [build-linux]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/sidebar-navigation'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -188,7 +189,7 @@ jobs:
 
       - name: Create GitHub release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.build-linux.outputs.version }}
         run: |

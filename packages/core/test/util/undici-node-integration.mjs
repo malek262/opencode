@@ -52,7 +52,9 @@ const results = {}
     await fetch(url, { dispatcher: agent })
     results.finiteCap = "unexpected-success"
   } catch (err) {
-    results.finiteCap = err.code ?? err.message
+    // undici's fetch wraps transport errors in TypeError("fetch failed");
+    // the real HeadersTimeoutError with its code lives on .cause.
+    results.finiteCap = err.cause?.code ?? err.code ?? err.message
   } finally {
     server.close()
     await agent.close()

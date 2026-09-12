@@ -14,12 +14,12 @@ const serve = (handler) =>
     })
   })
 
-const slowHeaders = () =>
+const slowHeaders = (delay = 700) =>
   serve((_req, res) => {
     setTimeout(() => {
       res.writeHead(200, { "content-type": "text/plain" })
       res.end("ok")
-    }, 700)
+    }, delay)
   })
 
 const results = {}
@@ -42,9 +42,11 @@ const results = {}
 
 // Case B: a finite transport cap surfaces as undici's headers timeout error.
 // With the +15s slack policy OpenCode's own timer always fires before this,
-// producing the clean retryable HeaderTimeoutError instead.
+// producing the clean retryable HeaderTimeoutError instead. undici v8 runs
+// timeouts on a 1s-resolution fast-timer wheel, so the delay must clear that
+// granularity (2000ms server vs 200ms cap -> undici fires at ~1-1.5s).
 {
-  const { url, server } = await slowHeaders()
+  const { url, server } = await slowHeaders(2000)
   const agent = new Agent({ headersTimeout: 200, bodyTimeout: 200 })
   try {
     await fetch(url, { dispatcher: agent })

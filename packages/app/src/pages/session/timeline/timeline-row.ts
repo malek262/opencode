@@ -1,5 +1,5 @@
 import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2"
-import type { PartGroup } from "@opencode-ai/session-ui/message-part"
+import { sameGroup, type PartGroup } from "@opencode-ai/session-ui/message-part"
 import { Data, Equal } from "effect"
 
 export type SummaryDiff = SnapshotFileDiff & { file: string }
@@ -74,7 +74,13 @@ export namespace TimelineRow {
     }
   }
 
+  // Streaming re-runs reconciliation for every row on each delta; AssistantPart rows carry
+  // the ref arrays, so compare them with the cheap field-level checks instead of Effect's
+  // deep Equal traversal (semantics are identical: same fields, same comparisons).
   export function equals(a: TimelineRow, b: TimelineRow) {
-    return Equal.equals(a, b)
+    if (a === b) return true
+    if (a._tag !== "AssistantPart" || b._tag !== "AssistantPart") return Equal.equals(a, b)
+    if (a.userMessageID !== b.userMessageID || a.previousAssistantPart !== b.previousAssistantPart) return false
+    return sameGroup(a.group, b.group)
   }
 }

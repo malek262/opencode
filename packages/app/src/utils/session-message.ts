@@ -45,76 +45,153 @@ function normalizeToolMetadata(name: string, metadata: Record<string, unknown>) 
   }
 }
 
+// Streaming deltas rebuild the whole message array while keeping untouched message object
+// identities, so the fold below is memoized per source message: a cache hit replays its
+// emissions instead of re-decoding parts and re-building message objects. Entries also carry
+// the fold state (agent/model/parentID) they were computed under, which both validates the
+// hit and skips the state transitions. Inputs are the same shapes as the live fold.
+type NormalizeModel = { id: string; providerID: string; variant?: string }
+type NormalizeCache = {
+  agent: string
+  model: NormalizeModel
+  parentID: string | undefined
+  messages: Message[]
+  parts: Array<[string, Part[]]>
+  compaction: { parentID: string; part: Part } | undefined
+  parentAgent: string | undefined
+  parentModel: { providerID: string; modelID: string; variant?: string } | undefined
+  emittedUser: Message | undefined
+  next: { agent: string; model: NormalizeModel; parentID: string | undefined }
+}
+
+const normalizeCache = new WeakMap<object, NormalizeCache>()
+
+function sameModel(a: NormalizeModel, b: NormalizeModel) {
+  return a === b || (a.id === b.id && a.providerID === b.providerID && a.variant === b.variant)
+}
+
 export function normalizeSessionMessages(sessionID: string, source: readonly SessionMessageInfo[]) {
   const messages: Message[] = []
   const parts = new Map<string, Part[]>()
   let agent = ""
-  let model = emptyModel
+  let model: NormalizeModel = emptyModel
   let parentID: string | undefined
+  let lastUser: Message | undefined
 
   source.forEach((message) => {
+    const cached = normalizeCache.get(message)
+    if (cached && cached.agent === agent && sameModel(cached.model, model) && cached.parentID === parentID) {
+      if (cached.messages.length) messages.push(...cached.messages)
+      for (const entry of cached.parts) parts.set(entry[0], entry[1])
+      if (cached.compaction) {
+        const target = cached.compaction.parentID
+        parts.set(target, [...(parts.get(target) ?? []), cached.compaction.part])
+      }
+      if (cached.parentAgent !== undefined && lastUser && lastUser.id === parentID) {
+        lastUser.agent = cached.parentAgent
+        lastUser.model = cached.parentModel!
+      }
+      if (cached.emittedUser) lastUser = cached.emittedUser
+      agent = cached.next.agent
+      model = cached.next.model
+      parentID = cached.next.parentID
+      return
+    }
+
+    const inAgent = agent
+    const inModel = model
+    const inParentID = parentID
+    const outMessages: Message[] = []
+    const outParts: Array<[string, Part[]]> = []
+    let compaction: { parentID: string; part: Part } | undefined
+    let parentAgent: string | undefined
+    let parentModel: { providerID: string; modelID: string; variant?: string } | undefined
+    let emittedUser: Message | undefined
+
     if (message.type === "agent-switched") {
       agent = message.agent
-      return
-    }
-    if (message.type === "model-switched") {
+    } else if (message.type === "model-switched") {
       model = message.model
-      return
-    }
-    if (message.type === "user") {
+    } else if (message.type === "user") {
       parentID = message.id
-      messages.push(userMessage(sessionID, message, agent, model))
-      parts.set(message.id, userParts(sessionID, message))
-      return
-    }
-    if (message.type === "synthetic" && message.description?.trim()) {
+      const built = userMessage(sessionID, message, agent, model)
+      const list = userParts(sessionID, message)
+      messages.push(built)
+      parts.set(message.id, list)
+      outMessages.push(built)
+      outParts.push([message.id, list])
+      lastUser = built
+      emittedUser = built
+    } else if (message.type === "synthetic" && message.description?.trim()) {
       parentID = message.id
-      messages.push({
+      const built: Message = {
         id: message.id,
         sessionID,
         role: "user",
         time: message.time,
         agent,
         model: { providerID: model.providerID, modelID: model.id, variant: model.variant },
-      })
-      parts.set(message.id, [textPart(sessionID, message.id, 0, message.description, true)])
-      return
-    }
-    if (message.type === "shell") {
-      messages.push(...shellMessages(sessionID, message, agent, model))
-      parts.set(message.id, [textPart(sessionID, message.id, 0, message.command)])
-      parts.set(`${message.id}:assistant`, [shellPart(sessionID, message)])
+      }
+      const list = [textPart(sessionID, message.id, 0, message.description, true)]
+      messages.push(built)
+      parts.set(message.id, list)
+      outMessages.push(built)
+      outParts.push([message.id, list])
+      lastUser = built
+      emittedUser = built
+    } else if (message.type === "shell") {
+      const built = shellMessages(sessionID, message, agent, model)
+      messages.push(...built)
+      outMessages.push(...built)
+      const commandList = [textPart(sessionID, message.id, 0, message.command)]
+      const shellList = [shellPart(sessionID, message)]
+      parts.set(message.id, commandList)
+      parts.set(`${message.id}:assistant`, shellList)
+      outParts.push([message.id, commandList], [`${message.id}:assistant`, shellList])
       parentID = undefined
-      return
-    }
-    if (message.type === "assistant") {
+    } else if (message.type === "assistant") {
       agent = message.agent
       model = message.model
-      if (!parentID) return
-      const parent = messages.findLast((item) => item.id === parentID)
-      if (parent?.role === "user") {
-        parent.agent = message.agent
-        parent.model = {
-          providerID: message.model.providerID,
-          modelID: message.model.id,
-          variant: message.model.variant,
-        }
+      if (parentID && lastUser && lastUser.id === parentID) {
+        parentAgent = message.agent
+        parentModel = { providerID: message.model.providerID, modelID: message.model.id, variant: message.model.variant }
+        lastUser.agent = parentAgent
+        lastUser.model = parentModel
       }
-      messages.push(assistantMessage(sessionID, parentID, message))
-      parts.set(message.id, assistantParts(sessionID, message))
-      return
-    }
-    if (message.type !== "compaction" || !parentID) return
-    parts.set(parentID, [
-      ...(parts.get(parentID) ?? []),
-      {
+      if (parentID) {
+        const built = assistantMessage(sessionID, parentID, message)
+        const list = assistantParts(sessionID, message)
+        messages.push(built)
+        parts.set(message.id, list)
+        outMessages.push(built)
+        outParts.push([message.id, list])
+      }
+    } else if (message.type === "compaction" && parentID) {
+      const part: Part = {
         id: `${message.id}:compaction`,
         sessionID,
         messageID: parentID,
         type: "compaction",
         auto: message.reason === "auto",
-      },
-    ])
+      }
+      const list = [...(parts.get(parentID) ?? []), part]
+      parts.set(parentID, list)
+      outParts.push([parentID, list])
+      compaction = { parentID, part }
+    }
+
+    normalizeCache.set(message, {
+      agent: inAgent,
+      model: inModel,
+      parentID: inParentID,
+      messages: outMessages,
+      parts: outParts,
+      compaction,
+      parentAgent,
+      parentModel,
+      emittedUser,
+      next: { agent, model, parentID },
+    })
   })
 
   return { messages, parts }

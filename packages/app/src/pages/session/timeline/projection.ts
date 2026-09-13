@@ -15,24 +15,24 @@ export function createTimelineProjection(input: {
   showReasoningSummaries: Accessor<boolean>
   inlineComments: Accessor<boolean>
 }) {
-  const messageByID = createMemo(() => new Map(input.messages().map((message) => [message.id, message] as const)))
-  const assistantMessagesByParent = createMemo(() => {
-    const result = new Map<string, AssistantMessage[]>()
-    input.messages().forEach((message) => {
-      if (message.role !== "assistant") return
-      const messages = result.get(message.parentID)
-      if (messages) {
-        messages.push(message)
-        return
-      }
-      result.set(message.parentID, [message])
-    })
-    return result
+  // One pass over messages and one over rows feeds every derived map; streaming deltas used
+  // to re-run each of these as separate full-list memos per change.
+  const messageIndex = createMemo(() => {
+    const byID = new Map<string, Message>()
+    const assistantsByParent = new Map<string, AssistantMessage[]>()
+    for (const message of input.messages()) {
+      byID.set(message.id, message)
+      if (message.role !== "assistant") continue
+      const list = assistantsByParent.get(message.parentID)
+      if (list) list.push(message)
+      if (!list) assistantsByParent.set(message.parentID, [message])
+    }
+    return { byID, assistantsByParent }
   })
   const projection = createMemo(() =>
     Timeline.constructSessionMessageRows(
       input.sessionMessages(),
-      (messageID) => messageByID().get(messageID) as UserMessage | AssistantMessage | undefined,
+      (messageID) => messageIndex().byID.get(messageID) as UserMessage | AssistantMessage | undefined,
       input.parts,
       input.showReasoningSummaries(),
       input.status().type,
@@ -44,38 +44,29 @@ export function createTimelineProjection(input: {
   const rows = createMemo((previous: TimelineRow.TimelineRow[] | undefined) =>
     reuseTimelineRows(previous, projection().rows),
   )
-  const rowByKey = createMemo(() => new Map(rows().map((row) => [TimelineRow.key(row), row] as const)))
-  const messageRowIndex = createMemo(() => {
-    const result = new Map<string, number>()
+  const rowIndexes = createMemo(() => {
+    const byKey = new Map<string, TimelineRow.TimelineRow>()
+    const firstIndex = new Map<string, number>()
+    const lastIndex = new Map<string, number>()
+    const lastGroupKey = new Map<string, string>()
     rows().forEach((row, index) => {
-      if (!("userMessageID" in row) || result.has(row.userMessageID)) return
-      result.set(row.userMessageID, index)
+      byKey.set(TimelineRow.key(row), row)
+      if (!("userMessageID" in row)) return
+      if (!firstIndex.has(row.userMessageID)) firstIndex.set(row.userMessageID, index)
+      lastIndex.set(row.userMessageID, index)
+      if (row._tag === "AssistantPart") lastGroupKey.set(row.userMessageID, row.group.key)
     })
-    return result
-  })
-  const messageLastRowIndex = createMemo(() => {
-    const result = new Map<string, number>()
-    rows().forEach((row, index) => {
-      if ("userMessageID" in row) result.set(row.userMessageID, index)
-    })
-    return result
-  })
-  const lastAssistantGroupKey = createMemo(() => {
-    const result = new Map<string, string>()
-    rows().forEach((row) => {
-      if (row._tag === "AssistantPart") result.set(row.userMessageID, row.group.key)
-    })
-    return result
+    return { byKey, firstIndex, lastIndex, lastGroupKey }
   })
 
   return {
     activeMessageID,
-    assistantMessagesByParent,
-    lastAssistantGroupKey,
-    messageByID,
-    messageRowIndex,
-    messageLastRowIndex,
-    rowByKey,
+    assistantMessagesByParent: () => messageIndex().assistantsByParent,
+    lastAssistantGroupKey: () => rowIndexes().lastGroupKey,
+    messageByID: () => messageIndex().byID,
+    messageRowIndex: () => rowIndexes().firstIndex,
+    messageLastRowIndex: () => rowIndexes().lastIndex,
+    rowByKey: () => rowIndexes().byKey,
     rows,
   }
 }

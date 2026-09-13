@@ -7,6 +7,7 @@ on:
       - fix/desktop-undici-timeout
       - perf-quickwins
       - perf-sidebar
+      - perf-streaming
   workflow_dispatch:
 
 concurrency:
@@ -117,6 +118,8 @@ jobs:
   build-linux:
     name: build desktop (linux x64)
     needs: [unit-tests, typecheck]
+    # Full packaging runs only for the release branch; phase branches verify with tests.
+    if: github.ref == 'refs/heads/sidebar-navigation'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:

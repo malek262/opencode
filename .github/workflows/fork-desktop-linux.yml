@@ -5,6 +5,7 @@ on:
     branches:
       - sidebar-navigation
       - bidi-rtl
+      - composer-rtl
   workflow_dispatch:
 
 concurrency:

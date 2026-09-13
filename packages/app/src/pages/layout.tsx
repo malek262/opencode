@@ -128,11 +128,11 @@ export default function LegacyLayout(props: ParentProps) {
     if (!slug) return { slug, dir: "" }
     const dir = decode64(slug)
     if (!dir) return { slug, dir: "" }
-    const store = serverSync().peek(dir, { bootstrap: false })
+    const store = serverSync().peek(dir)
     return {
       slug,
       store,
-      dir: store[0].path.directory || dir,
+      dir: store?.[0].path.directory || dir,
     }
   })
   const availableThemeEntries = createMemo(() => theme.ids().map((id) => [id, theme.themes()[id]] as const))

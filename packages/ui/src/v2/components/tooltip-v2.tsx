@@ -70,14 +70,22 @@ export function TooltipV2(props: TooltipV2Props) {
   createEffect(() => {
     if (!ref) return
     sync()
+    // Only attribute flips matter for sync(); observing childList would fire for every
+    // text mutation under the trigger (e.g. per-second status badges in sidebar rows).
     const obs = new MutationObserver(sync)
     obs.observe(ref, {
       subtree: true,
-      childList: true,
       attributes: true,
       attributeFilter: ["aria-expanded", "data-expanded"],
     })
-    onCleanup(() => obs.disconnect())
+    const resync = () => sync()
+    ref.addEventListener("pointerenter", resync)
+    ref.addEventListener("focusin", resync)
+    onCleanup(() => {
+      obs.disconnect()
+      ref.removeEventListener("pointerenter", resync)
+      ref.removeEventListener("focusin", resync)
+    })
   })
 
   let justClickedTrigger = false

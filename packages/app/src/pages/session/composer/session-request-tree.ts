@@ -1,5 +1,23 @@
 import type { PermissionRequest, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client"
 
+// The parent->children map is rebuilt per tab/avatar row, so cache it by session array
+// identity: directory stores replace the array only when that directory changes.
+const childMapCache = new WeakMap<Session[], Map<string, string[]>>()
+
+function sessionChildMap(session: Session[]) {
+  const cached = childMapCache.get(session)
+  if (cached) return cached
+  const map = session.reduce((acc, item) => {
+    if (!item.parentID) return acc
+    const list = acc.get(item.parentID)
+    if (list) list.push(item.id)
+    if (!list) acc.set(item.parentID, [item.id])
+    return acc
+  }, new Map<string, string[]>())
+  childMapCache.set(session, map)
+  return map
+}
+
 function sessionTreeRequest<T>(
   session: Session[],
   request: Record<string, T[] | undefined>,
@@ -8,13 +26,7 @@ function sessionTreeRequest<T>(
 ) {
   if (!sessionID) return
 
-  const map = session.reduce((acc, item) => {
-    if (!item.parentID) return acc
-    const list = acc.get(item.parentID)
-    if (list) list.push(item.id)
-    if (!list) acc.set(item.parentID, [item.id])
-    return acc
-  }, new Map<string, string[]>())
+  const map = sessionChildMap(session)
 
   const seen = new Set([sessionID])
   const ids = [sessionID]

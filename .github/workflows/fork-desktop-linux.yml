@@ -6,6 +6,7 @@ on:
       - sidebar-navigation
       - fix/desktop-undici-timeout
       - perf-quickwins
+      - perf-sidebar
   workflow_dispatch:
 
 concurrency:

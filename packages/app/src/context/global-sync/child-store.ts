@@ -310,16 +310,8 @@ export function createChildStoreManager(input: {
     return childStore
   }
 
-  function peek(directory: string, options: ChildOptions = {}) {
-    const key = directoryKey(directory)
-    const childStore = ensureChild(directory)
-    if (options.mcp) enableMcp(directory, key, childStore)
-    const shouldBootstrap = options.bootstrap ?? true
-    if (shouldBootstrap) activate(key)
-    if (shouldBootstrap && childStore[0].status === "loading") {
-      input.onBootstrap(directory)
-    }
-    return childStore
+  function peek(directory: string) {
+    return children[directoryKey(directory)]
   }
 
   function enableMcp(directory: string, key: DirectoryKey, childStore: [Store<State>, SetStoreFunction<State>]) {

@@ -1,6 +1,7 @@
 import type { Event, Session, SessionV2Info, V2SessionListResponse } from "@opencode-ai/sdk/v2/client"
 import type { QueryClient } from "@tanstack/solid-query"
 import { trimSessions } from "./session-trim"
+import { SESSION_RECENT_WINDOW } from "./types"
 import { pathKey } from "@/utils/path-key"
 
 export const HOME_V2_SESSION_PAGE_LIMIT = 5_000
@@ -149,9 +150,19 @@ export function parseHomeSessionIndex(sessions: SessionV2Info[]): Session[] {
   })
 }
 
+// Re-running the trim over every session on each 15-minute age tick is pure waste: the
+// result only changes when the input array changes or the recency window rolls over.
+let retainCache: { sessions: Session[]; limit: number; bucket: number; result: Session[] } | undefined
+
 export function retainHomeSessions(sessions: Session[], limit: number, now: number) {
+  const bucket = Math.floor(now / SESSION_RECENT_WINDOW)
+  if (retainCache && retainCache.sessions === sessions && retainCache.limit === limit && retainCache.bucket === bucket) {
+    return retainCache.result
+  }
   const grouped = Map.groupBy(sessions, (session) => pathKey(session.directory))
-  return [...grouped.values()].flatMap((items) => trimSessions(items, { limit, permission: {}, now }))
+  const result = [...grouped.values()].flatMap((items) => trimSessions(items, { limit, permission: {}, now }))
+  retainCache = { sessions, limit, bucket, result }
+  return result
 }
 
 export function applyHomeSessionEvent(sessions: Session[], event: HomeSessionEvent) {

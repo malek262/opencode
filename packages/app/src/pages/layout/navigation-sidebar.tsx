@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, startTransition } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, For, onCleanup, Show, startTransition } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useQuery } from "@tanstack/solid-query"
 import type { GlobalSession } from "@opencode-ai/sdk/v2/client"
@@ -72,7 +72,7 @@ type SessionAction = (record: SidebarSessionRecord) => void
 
 const SESSION_LIMIT = 64
 const ARCHIVED_LIMIT = 100
-const AGE_TICK = 60_000
+const AGE_TICK = 900_000
 const STATUS_TICK = 1_000
 const SECTION_LABEL = "px-3 pb-1 pt-3 text-v2-text-text-muted [font-weight:440]"
 const ROW =
@@ -182,8 +182,8 @@ export function NavigationSidebar() {
       now(),
     )
     return indexed.flatMap((session) => {
-      const [store] = sync.child(session.directory, { bootstrap: false })
-      if (store.status === "loading") return [session]
+      const store = sync.peek(session.directory)?.[0]
+      if (!store || store.status === "loading") return [session]
       const match = Binary.search(store.session, session.id, (item) => item.id)
       if (!match.found) return []
       return [store.session[match.index]]
@@ -206,17 +206,19 @@ export function NavigationSidebar() {
   })
 
   createEffect(() => {
-    for (const session of sessions()) {
-      const started = status.started[session.id]
-      if (working(session.id) && started === undefined) setStatus("started", session.id, Date.now())
-      if (!working(session.id) && started !== undefined)
-        setStatus(
-          produce((draft) => {
-            delete draft.started[session.id]
-            draft.done[session.id] = Date.now()
-          }),
-        )
-    }
+    batch(() => {
+      for (const session of sessions()) {
+        const started = status.started[session.id]
+        if (working(session.id) && started === undefined) setStatus("started", session.id, Date.now())
+        if (!working(session.id) && started !== undefined)
+          setStatus(
+            produce((draft) => {
+              delete draft.started[session.id]
+              draft.done[session.id] = Date.now()
+            }),
+          )
+      }
+    })
   })
 
   createEffect(() => {
@@ -368,7 +370,7 @@ export function NavigationSidebar() {
   }
 
   function branchOf(directory: string) {
-    return home.server.focusedSync().child(directory)[0].vcs?.branch
+    return home.server.focusedSync().peek(directory)?.[0].vcs?.branch
   }
 
   function open(session: { id: string; directory: string }, project: LocalProject | undefined, event?: MouseEvent) {

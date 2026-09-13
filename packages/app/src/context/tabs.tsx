@@ -79,7 +79,9 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     const mobile = createMediaQuery("(max-width: 767px)")
     let pruned = false
     createEffect(() => {
-      if (pruned || !ready()) return
+      // Both stores hydrate asynchronously over IPC; pruning on tabs-readiness alone can
+      // observe the pre-hydration "tabs" navigation-mode default and skip the prune forever.
+      if (pruned || !ready() || !settings.ready()) return
       pruned = true
       // The tab-strip paradigm reopens and prefetches every persisted tab at startup; sidebar
       // navigation only needs the tab you were actually on, so drop the rest once on launch.

@@ -13,7 +13,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client"
 import type { FileDiffInfo } from "@opencode-ai/client/promise"
 import { batch } from "solid-js"
-import { createStore, produce, reconcile } from "solid-js/store"
+import { createStore, produce, reconcile, snapshot } from "solid-js/store"
 import { message as cleanMessage } from "@/utils/diffs"
 import { sessionNotFoundError } from "@/utils/server-errors"
 import { rootSession } from "@/utils/session-route"
@@ -679,7 +679,9 @@ export function createServerSession(
     const source = page.source
       ? (() => {
           const incoming = new Map(page.source.map((message) => [message.id, message]))
-          const existing = data.session_message[sessionID] ?? []
+          // Snapshot the store reads: normalizeSessionMessages caches by message identity, and
+          // store proxies keep a stable identity while their content mutates in place.
+          const existing = snapshot(data.session_message[sessionID] ?? [])
           const current = existing.filter((message) => !incoming.has(message.id))
           const live = new Map(existing.map((message) => [message.id, message]))
           return (page.sourceMode === "older" ? [...page.source, ...current] : [...current, ...page.source]).map(

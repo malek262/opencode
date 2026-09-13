@@ -425,26 +425,6 @@ export async function bootstrapDirectory(input: {
               const next = projectID(data.directory ?? input.directory, input.global.project)
               if (next) input.setStore("project", next)
             })),
-    ].filter(Boolean) as (() => Promise<any>)[]
-    const deferred = [
-      () =>
-        retry(async () => {
-          if ((await input.protocol) !== "v1") return
-          return input.sdk.vcs.get().then((result) => {
-            const next = { branch: result.data?.branch, default_branch: result.data?.default_branch }
-            input.setStore("vcs", next)
-            if (next) input.vcsCache.setStore("value", next)
-          })
-        }),
-      input.mcp &&
-        (() =>
-          loadCommands(input.directory, input.api.command, input.sdk, input.protocol).then((commands) =>
-            input.setStore("command", commands),
-          )),
-      () =>
-        input.queryClient.fetchQuery(
-          loadReferencesQuery(input.scope, input.directory, input.api.reference, input.sdk, input.protocol),
-        ),
       () =>
         retry(() =>
           (async () => {
@@ -516,6 +496,26 @@ export async function bootstrapDirectory(input: {
               }),
             )
           }),
+        ),
+    ].filter(Boolean) as (() => Promise<any>)[]
+    const deferred = [
+      () =>
+        retry(async () => {
+          if ((await input.protocol) !== "v1") return
+          return input.sdk.vcs.get().then((result) => {
+            const next = { branch: result.data?.branch, default_branch: result.data?.default_branch }
+            input.setStore("vcs", next)
+            if (next) input.vcsCache.setStore("value", next)
+          })
+        }),
+      input.mcp &&
+        (() =>
+          loadCommands(input.directory, input.api.command, input.sdk, input.protocol).then((commands) =>
+            input.setStore("command", commands),
+          )),
+      () =>
+        input.queryClient.fetchQuery(
+          loadReferencesQuery(input.scope, input.directory, input.api.reference, input.sdk, input.protocol),
         ),
       input.mcp &&
         (() =>

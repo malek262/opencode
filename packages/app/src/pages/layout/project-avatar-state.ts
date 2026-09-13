@@ -22,18 +22,23 @@ export function useSessionTabAvatarState(
     const serverSync = sync()
     if (!serverSync) return false
     const permissionState = permission.ensureServerState(server())
+    // Subscribe to the permission data before the store probe: peek() is non-reactive, and
+    // returning early here would leave the memo permanently unsubscribed when the child
+    // store does not exist yet (sidebar rows evaluate before the session page boots).
+    const permissions = serverSync.session.data.permission
     const store = serverSync.peek(directory())
-    if (!store) return false
-    return !!sessionPermissionRequest(store[0].session, serverSync.session.data.permission, sessionId(), (item) => {
+    if (!store) return !!permissions[sessionId()]?.some((item) => !permissionState.autoResponds(item, directory()))
+    return !!sessionPermissionRequest(store[0].session, permissions, sessionId(), (item) => {
       return !permissionState.autoResponds(item, directory())
     })
   })
   const hasQuestions = createMemo(() => {
     const serverSync = sync()
     if (!serverSync) return false
+    const questions = serverSync.session.data.question
     const store = serverSync.peek(directory())
-    if (!store) return false
-    return !!sessionQuestionRequest(store[0].session, serverSync.session.data.question, sessionId())
+    if (!store) return !!questions[sessionId()]?.length
+    return !!sessionQuestionRequest(store[0].session, questions, sessionId())
   })
   const needsAttention = createMemo(() => hasPermissions() || hasQuestions())
   const notificationState = createMemo(() => {

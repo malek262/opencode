@@ -211,4 +211,51 @@ describe("normalizeSessionMessages", () => {
       }),
     ])
   })
+
+  test("replays cached user messages without mutating earlier outputs", () => {
+    const user = { id: "msg_user", type: "user", text: "hi", time: { created: 1 } } satisfies SessionMessageInfo
+    const assistant = (id: string, agent: string): SessionMessageInfo => ({
+      id,
+      type: "assistant",
+      agent,
+      model: { id: "claude", providerID: "anthropic", variant: "high" },
+      content: [{ type: "text", text: "hello" }],
+      time: { created: 2, completed: 3 },
+    })
+
+    const first = normalizeSessionMessages("ses_cache", [user, assistant("msg_a1", "build")])
+    expect(first.messages[0]).toMatchObject({ role: "user", agent: "build" })
+
+    const second = normalizeSessionMessages("ses_cache", [user, assistant("msg_a2", "plan")])
+    expect(second.messages[0]).toMatchObject({ role: "user", agent: "plan" })
+    expect(first.messages[0]).toMatchObject({ role: "user", agent: "build" })
+  })
+
+  test("replays a compaction part exactly once on cache hits", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "hi", time: { created: 1 } },
+      {
+        id: "msg_asst",
+        type: "assistant",
+        agent: "build",
+        model: { id: "claude", providerID: "anthropic" },
+        content: [{ type: "text", text: "hello" }],
+        time: { created: 2, completed: 3 },
+      },
+      {
+        id: "msg_comp",
+        type: "compaction",
+        status: "completed",
+        reason: "auto",
+        summary: "summary",
+        recent: "recent",
+        time: { created: 4 },
+      },
+    ] satisfies SessionMessageInfo[]
+
+    normalizeSessionMessages("ses_compact", source)
+    const replayed = normalizeSessionMessages("ses_compact", source)
+    const compactionIDs = (replayed.parts.get("msg_user") ?? []).map((part) => part.id).filter((id) => id.endsWith(":compaction"))
+    expect(compactionIDs).toEqual(["msg_comp:compaction"])
+  })
 })

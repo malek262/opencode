@@ -57,7 +57,6 @@ type NormalizeCache = {
   parentID: string | undefined
   messages: Message[]
   parts: Array<[string, Part[]]>
-  compaction: { parentID: string; part: Part } | undefined
   parentAgent: string | undefined
       parentModel: { providerID: string; modelID: string; variant?: string } | undefined
       emittedUser: UserMessage | undefined
@@ -77,21 +76,22 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
   let model: NormalizeModel = emptyModel
   let parentID: string | undefined
   let lastUser: UserMessage | undefined
+  let lastUserIndex = -1
 
   source.forEach((message) => {
     const cached = normalizeCache.get(message)
     if (cached && cached.agent === agent && sameModel(cached.model, model) && cached.parentID === parentID) {
       if (cached.messages.length) messages.push(...cached.messages)
       for (const entry of cached.parts) parts.set(entry[0], entry[1])
-      if (cached.compaction) {
-        const target = cached.compaction.parentID
-        parts.set(target, [...(parts.get(target) ?? []), cached.compaction.part])
+      if (cached.emittedUser) {
+        lastUser = cached.emittedUser
+        lastUserIndex = messages.length - 1
       }
       if (cached.parentAgent !== undefined && lastUser && lastUser.id === parentID) {
-        lastUser.agent = cached.parentAgent
-        lastUser.model = cached.parentModel!
+        const patched = { ...lastUser, agent: cached.parentAgent, model: cached.parentModel! }
+        if (lastUserIndex >= 0 && messages[lastUserIndex] === lastUser) messages[lastUserIndex] = patched
+        lastUser = patched
       }
-      if (cached.emittedUser) lastUser = cached.emittedUser
       agent = cached.next.agent
       model = cached.next.model
       parentID = cached.next.parentID
@@ -103,7 +103,6 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
     const inParentID = parentID
     const outMessages: Message[] = []
     const outParts: Array<[string, Part[]]> = []
-    let compaction: { parentID: string; part: Part } | undefined
     let parentAgent: string | undefined
     let parentModel: { providerID: string; modelID: string; variant?: string } | undefined
     let emittedUser: UserMessage | undefined
@@ -121,6 +120,7 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       outMessages.push(built)
       outParts.push([message.id, list])
       lastUser = built
+      lastUserIndex = messages.length - 1
       emittedUser = built
     } else if (message.type === "synthetic" && message.description?.trim()) {
       parentID = message.id
@@ -138,6 +138,7 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       outMessages.push(built)
       outParts.push([message.id, list])
       lastUser = built
+      lastUserIndex = messages.length - 1
       emittedUser = built
     } else if (message.type === "shell") {
       const built = shellMessages(sessionID, message, agent, model)
@@ -155,8 +156,9 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       if (parentID && lastUser && lastUser.id === parentID) {
         parentAgent = message.agent
         parentModel = { providerID: message.model.providerID, modelID: message.model.id, variant: message.model.variant }
-        lastUser.agent = parentAgent
-        lastUser.model = parentModel
+        const patched = { ...lastUser, agent: parentAgent, model: parentModel }
+        if (lastUserIndex >= 0 && messages[lastUserIndex] === lastUser) messages[lastUserIndex] = patched
+        lastUser = patched
       }
       if (parentID) {
         const built = assistantMessage(sessionID, parentID, message)
@@ -177,7 +179,6 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       const list = [...(parts.get(parentID) ?? []), part]
       parts.set(parentID, list)
       outParts.push([parentID, list])
-      compaction = { parentID, part }
     }
 
     normalizeCache.set(message, {
@@ -186,7 +187,6 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       parentID: inParentID,
       messages: outMessages,
       parts: outParts,
-      compaction,
       parentAgent,
       parentModel,
       emittedUser,

@@ -1,7 +1,7 @@
 import { Platform, usePlatform } from "@/context/platform"
 import { makePersisted, type AsyncStorage, type SyncStorage } from "@solid-primitives/storage"
 import { checksum } from "@opencode-ai/core/util/encode"
-import { createResource, type Accessor } from "solid-js"
+import { createResource, getOwner, onCleanup, type Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 import { pathKey } from "@/utils/path-key"
 import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
@@ -42,12 +42,17 @@ function coalescedWrite(write: (key: string, value: string) => unknown) {
     if (next) write(next.key, next.value)
   }
   pendingWriteFlushes.add(flush)
+  const dispose = () => {
+    pendingWriteFlushes.delete(flush)
+    if (timer !== undefined) clearTimeout(timer)
+    flush()
+  }
   return Object.assign(
     (key: string, value: string) => {
       pending = { key, value }
       if (timer === undefined) timer = setTimeout(flush, PERSIST_WRITE_INTERVAL_MS)
     },
-    { flush },
+    { flush, dispose },
   )
 }
 
@@ -638,6 +643,7 @@ export function persisted<T>(
 
   const legacyStorageNames = config.legacyStorageNames ?? []
 
+  let disposeWrite: (() => void) | undefined
   const storage = (() => {
     if (!isDesktop && !draft) {
       const current = currentStorage as SyncStorage
@@ -645,6 +651,7 @@ export function persisted<T>(
       const legacyStores = legacyStorageNames.map(localStorageWithPrefix)
 
       const scheduleSet = coalescedWrite((key, value) => current.setItem(key, value))
+      disposeWrite = scheduleSet.dispose
       const api: SyncStorage = {
         getItem: (key) => {
           const value = readCurrent({ storage: current, key, defaults, migrate: config.migrate })
@@ -687,6 +694,7 @@ export function persisted<T>(
     let draftLatest: string | undefined
 
     const scheduleSet = coalescedWrite((key, value) => void current.setItem(key, value))
+    disposeWrite = scheduleSet.dispose
     const api: AsyncStorage = {
       getItem: async (key) => {
         const value = await readCurrentAsync({ storage: current, key, defaults, migrate: config.migrate })
@@ -720,6 +728,10 @@ export function persisted<T>(
     return api
   })()
 
+  // Flush and unregister the coalesced writer when the owning scope is disposed; otherwise
+  // repeatedly mounted components would leak flush closures into the module-level set.
+  if (disposeWrite && getOwner()) onCleanup(disposeWrite)
+
   const [state, setState, init] = makePersisted(store, { name: config.key, storage })
 
   const isAsync = init instanceof Promise
@@ -736,7 +748,9 @@ export function persisted<T>(
     state,
     setState,
     init,
-    Object.assign(() => (ready.loading ? false : ready.latest === true), {
+    // A failed hydration still counts as settled: consumers fall back to defaults rather
+    // than waiting on storage that will never resolve.
+    Object.assign(() => (ready.loading ? false : ready.error !== undefined || ready.latest === true), {
       promise: init instanceof Promise ? init : undefined,
     }),
   ]

@@ -5,6 +5,7 @@ on:
     branches:
       - sidebar-navigation
       - fix/desktop-undici-timeout
+      - perf-quickwins
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +17,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  OPENCODE_FORK: "1"
 
 jobs:
   unit-tests:

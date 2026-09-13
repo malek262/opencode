@@ -406,6 +406,12 @@ const main = Effect.gen(function* () {
     logger.log("loading task finished")
   }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)
 
+  // Open windows while the sidecar is still booting; the renderer gates its own
+  // startup on awaitInitialization, so hiding the window here only serializes
+  // sidecar health polling ahead of first paint.
+  const windows = restoreMainWindows()
+  if (windows.length) createMenu(menuDeps)
+
   yield* Fiber.await(loadingTask)
 
   app.on("window-all-closed", () => {
@@ -416,9 +422,6 @@ const main = Effect.gen(function* () {
     if (BrowserWindow.getAllWindows().length > 0) return
     restoreMainWindows()
   })
-
-  const windows = restoreMainWindows()
-  if (windows.length) createMenu(menuDeps)
 })
 
 Effect.runFork(main)

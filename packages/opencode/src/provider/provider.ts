@@ -7,7 +7,7 @@ import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Npm } from "@opencode-ai/core/npm"
 import { Hash } from "@opencode-ai/core/util/hash"
-import { createUndiciDispatcher } from "@opencode-ai/core/util/undici-dispatcher"
+import { createUndiciFetch } from "@opencode-ai/core/util/undici-dispatcher"
 import { Plugin } from "../plugin"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
@@ -1801,12 +1801,12 @@ const layer = Layer.effect(
         const headerTimeout = options["headerTimeout"] ?? 300_000
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
-        // Node's undici transport caps header/body waits at 300s by default; derive an
-        // explicit dispatcher from the same options so they can actually be lifted.
-        const dispatcher = customFetch ? undefined : createUndiciDispatcher({ headerTimeout, chunkTimeout })
+        // Node's undici transport caps header/body waits at 300s by default; route
+        // fetch through the same package's undici so those caps can be lifted.
+        const nodeFetch = customFetch ? undefined : createUndiciFetch({ headerTimeout, chunkTimeout })
 
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-          const fetchFn = customFetch ?? fetch
+          const fetchFn = customFetch ?? nodeFetch ?? fetch
           const opts = init ?? {}
           const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
           const headerTimeoutMs = headerTimeout === false ? undefined : headerTimeout
@@ -1824,7 +1824,6 @@ const layer = Layer.effect(
 
           const res = await fetchFn(input, {
             ...opts,
-            ...(dispatcher ? { dispatcher } : {}),
             // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
             timeout: false,
           } as BunFetchRequestInit).finally(() => headerTimeoutCtl?.clear())

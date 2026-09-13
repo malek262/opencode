@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { createUndiciDispatcher, resolveTimeoutMs } from "../../src/util/undici-dispatcher"
+import { createUndiciFetch, resolveTimeoutMs } from "../../src/util/undici-dispatcher"
 
 describe("resolveTimeoutMs", () => {
   test("false disables the transport timeout", () => {
@@ -21,9 +21,9 @@ describe("resolveTimeoutMs", () => {
   })
 })
 
-describe("createUndiciDispatcher", () => {
+describe("createUndiciFetch", () => {
   test("returns undefined under Bun so the CLI path is unchanged", () => {
-    expect(createUndiciDispatcher({ headerTimeout: false, chunkTimeout: false })).toBeUndefined()
+    expect(createUndiciFetch({ headerTimeout: false, chunkTimeout: false })).toBeUndefined()
   })
 })
 

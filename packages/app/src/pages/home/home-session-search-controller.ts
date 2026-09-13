@@ -3,12 +3,14 @@ import { useLanguage } from "@/context/language"
 import { serverName } from "@/context/server"
 import { displayName } from "@/pages/layout/helpers"
 import { makeEventListener } from "@solid-primitives/event-listener"
-import { createMemo, onCleanup } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { HomeController } from "./home-controller"
 import { homeSessionSearchKey, type HomeSessionRecord, type HomeSessionsController } from "./home-sessions-controller"
 
 type HomeSessionSearchSource = Pick<HomeSessionsController, "data" | "session">
+
+const SEARCH_RESULT_LIMIT = 50
 
 export function createHomeSessionSearchController(home: HomeController, sessions: HomeSessionSearchSource) {
   const command = useCommand()
@@ -18,12 +20,28 @@ export function createHomeSessionSearchController(home: HomeController, sessions
   let input: HTMLInputElement | undefined
   let list: HTMLDivElement | undefined
   const query = createMemo(() => state.value.trim())
-  const results = createMemo(() => {
+  // Debounced, lowercased search value: filtering scans every retained record, so it must
+  // not re-run per keystroke.
+  const [search, setSearch] = createSignal("")
+  createEffect(() => {
     const value = query().toLowerCase()
+    if (!value) {
+      setSearch("")
+      return
+    }
+    const timer = setTimeout(() => setSearch(value), 100)
+    onCleanup(() => clearTimeout(timer))
+  })
+  const results = createMemo(() => {
+    const value = search()
     if (!value) return []
-    return sessions.data
-      .searchRecords()
-      .filter((record) => `${record.session.title} ${record.projectName}`.toLowerCase().includes(value))
+    const matches: HomeSessionRecord[] = []
+    for (const record of sessions.data.searchRecords()) {
+      if (!`${record.session.title} ${record.projectName}`.toLowerCase().includes(value)) continue
+      matches.push(record)
+      if (matches.length >= SEARCH_RESULT_LIMIT) break
+    }
+    return matches
   })
   const active = createMemo(() => {
     const records = results()

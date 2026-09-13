@@ -491,6 +491,7 @@ export function Markdown(
   )
 
   let copyCleanup: (() => void) | undefined
+  let lastCopyLabels: CopyLabels | undefined
 
   createEffect(() => {
     const container = root()
@@ -522,9 +523,14 @@ export function Markdown(
       disposeCopyButtons(child)
       child.remove()
     }
-    container
-      .querySelectorAll<HTMLElement>('[data-slot="markdown-copy-button"]')
-      .forEach((button) => setCopyState(button, labels, button.dataset.copied === "true"))
+    // Buttons receive their labels at creation and are protected from morphdom updates, so
+    // the container-wide sweep is only needed when the i18n label strings actually change.
+    if (!lastCopyLabels || lastCopyLabels.copy !== labels.copy || lastCopyLabels.copied !== labels.copied) {
+      lastCopyLabels = labels
+      container
+        .querySelectorAll<HTMLElement>('[data-slot="markdown-copy-button"]')
+        .forEach((button) => setCopyState(button, labels, button.dataset.copied === "true"))
+    }
     if (!copyCleanup)
       copyCleanup = setupCodeCopy(container, () => ({
         copy: i18n.t("ui.message.copy"),

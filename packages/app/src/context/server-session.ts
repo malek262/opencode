@@ -529,10 +529,17 @@ export function createServerSession(
         .map(([sessionID]) => sessionID),
     ])
 
-  const touch = (sessionID: string) =>
+  const touch = (sessionID: string) => {
+    seen.delete(sessionID)
+    seen.add(sessionID)
+    // Reordering above is the whole eviction contract while under the limit; only overflow
+    // needs the protected-set rebuild and scan.
+    if (seen.size <= SESSION_CACHE_LIMIT) return
     evict(
       pickSessionCacheEvictions({ seen, keep: sessionID, limit: SESSION_CACHE_LIMIT, preserve: protectedSessions() }),
     )
+  }
+  let touchSuppressed = false
 
   const fetchMessages = async (sessionID: string, limit: number, before?: string, onAttempt?: () => void) => {
     if (messageApi && (await options?.protocol) !== "v1") {
@@ -901,26 +908,33 @@ export function createServerSession(
     }
 
     const normalized = normalizeSessionMessages(reduction.sessionID, reduction.messages)
-    batch(() => {
-      for (const message of normalized.messages) {
-        if (!touched.has(message.id)) continue
-        apply({ type: "message.updated", properties: { sessionID: reduction.sessionID, info: message } })
-      }
-      for (const messageID of touched) {
-        const next = normalized.parts.get(messageID) ?? []
-        const nextIDs = new Set(next.map((part) => part.id))
-        for (const part of next) {
-          apply({ type: "message.part.updated", properties: { sessionID: reduction.sessionID, part } })
+    // One touch per delta instead of one per applied message/part.
+    touchSuppressed = true
+    try {
+      batch(() => {
+        for (const message of normalized.messages) {
+          if (!touched.has(message.id)) continue
+          apply({ type: "message.updated", properties: { sessionID: reduction.sessionID, info: message } })
         }
-        for (const part of data.part[messageID] ?? []) {
-          if (nextIDs.has(part.id)) continue
-          apply({
-            type: "message.part.removed",
-            properties: { sessionID: reduction.sessionID, messageID, partID: part.id },
-          })
+        for (const messageID of touched) {
+          const next = normalized.parts.get(messageID) ?? []
+          const nextIDs = new Set(next.map((part) => part.id))
+          for (const part of next) {
+            apply({ type: "message.part.updated", properties: { sessionID: reduction.sessionID, part } })
+          }
+          for (const part of data.part[messageID] ?? []) {
+            if (nextIDs.has(part.id)) continue
+            apply({
+              type: "message.part.removed",
+              properties: { sessionID: reduction.sessionID, messageID, partID: part.id },
+            })
+          }
         }
-      }
-    })
+      })
+    } finally {
+      touchSuppressed = false
+    }
+    touch(reduction.sessionID)
   }
 
   const hydrateV2Message = (sessionID: string, messageID: string) => {
@@ -988,7 +1002,7 @@ export function createServerSession(
   const apply = (event: { type: string; properties?: unknown }) => {
     const eventID = eventSessionID(event)
     if (eventID) {
-      touch(eventID)
+      if (!touchSuppressed) touch(eventID)
       if (
         !data.info[eventID] &&
         event.type !== "session.created" &&

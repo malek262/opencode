@@ -585,7 +585,7 @@ export function AppInterface(props: {
       <GlobalProvider>
         <SettingsProvider>
           <ConnectionGate disableHealthCheck={props.disableHealthCheck} startup={props.startup}>
-            <Show when={useSettings().general.newLayoutDesigns().toString()} keyed>
+            <Show when={useSettings().ready() && useSettings().general.newLayoutDesigns().toString()} keyed>
               <Dynamic
                 component={props.router ?? Router}
                 root={(routerProps) => (

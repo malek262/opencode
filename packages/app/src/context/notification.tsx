@@ -373,7 +373,9 @@ function createServerNotificationState(input: {
       if (meta.disposed) return
       if (session?.parentID) return
 
-      if (settings.sounds.errorsEnabled()) {
+      // Directory-level failures (plugin/skill load errors) arrive without a sessionID; keep
+      // them in the notification list for diagnostics but never sound or raise an OS alert.
+      if (sessionID && settings.sounds.errorsEnabled()) {
         void playSoundById(settings.sounds.errors())
       }
 
@@ -381,7 +383,7 @@ function createServerNotificationState(input: {
       append({
         directory,
         time,
-        viewed: viewedInCurrentSession(directory, sessionID),
+        viewed: sessionID ? viewedInCurrentSession(directory, sessionID) : true,
         type: "error",
         session: sessionID ?? "global",
         error,
@@ -390,7 +392,7 @@ function createServerNotificationState(input: {
         session?.title ??
         (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription"))
       const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
-      if (settings.notifications.errors()) {
+      if (sessionID && settings.notifications.errors()) {
         void platform.notify(language.t("notification.session.error.title"), description, () => input.navigate(href))
       }
     })

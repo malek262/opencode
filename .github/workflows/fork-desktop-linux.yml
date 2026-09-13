@@ -183,9 +183,50 @@ jobs:
           name: opencode-desktop-linux-x64
           path: packages/desktop/dist/*
 
+  build-cli:
+    name: build cli (linux x64)
+    needs: [unit-tests, typecheck]
+    # Ships the TUI/server binary alongside the desktop packages so the fork can be
+    # installed in a plain system terminal too.
+    if: github.ref == 'refs/heads/sidebar-navigation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --os=linux --cpu=x64
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "bot@opencode.ai"
+          git config --global user.name "opencode"
+
+      - name: Compute version
+        id: version
+        run: echo "app=$(node -p "require('./packages/desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Compile CLI binary
+        working-directory: packages/opencode
+        run: bun run ./script/build.ts --single
+        env:
+          OPENCODE_VERSION: ${{ steps.version.outputs.app }}
+          OPENCODE_CHANNEL: prod
+
+      - name: List CLI artifacts
+        run: ls -lh packages/opencode/dist/*/bin/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: opencode-cli-linux-x64
+          path: packages/opencode/dist/opencode-linux-x64/bin/opencode
+
   release:
     name: create release
-    needs: [build-linux]
+    needs: [build-linux, build-cli]
     if: github.event_name == 'push' && github.ref == 'refs/heads/sidebar-navigation'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -195,6 +236,11 @@ jobs:
           name: opencode-desktop-linux-x64
           path: dist
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: opencode-cli-linux-x64
+          path: dist-cli
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
@@ -202,13 +248,14 @@ jobs:
           VERSION: ${{ needs.build-linux.outputs.version }}
         run: |
           shopt -s nullglob
-          files=(dist/*.{AppImage,deb,rpm,blockmap} dist/latest*.yml dist/latest*.json)
+          mv dist-cli/opencode dist-cli/opencode-cli-linux-x64
+          files=(dist/*.{AppImage,deb,rpm,blockmap} dist/latest*.yml dist/latest*.json dist-cli/*)
           if (( ${#files[@]} == 0 )); then
             echo "No desktop release assets found"
             exit 1
           fi
           TAG="v${VERSION}"
-          NOTES="Fork build of anomalyco/opencode with the sidebar navigation feature. Commit: ${{ github.sha }}"
+          NOTES="Fork build of anomalyco/opencode with the sidebar navigation feature, RTL/bidi support, and a standalone CLI binary (opencode-cli-linux-x64). Commit: ${{ github.sha }}"
           gh release create "$TAG" "${files[@]}" \
             --title "OpenCode Desktop $TAG" \
             --notes "$NOTES" \

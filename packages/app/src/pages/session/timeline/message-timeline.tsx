@@ -442,7 +442,6 @@ export function MessageTimeline(props: {
     get scrollMargin() {
       return showHeader() ? 64 : 0
     },
-    overscan: 50,
     paddingEnd: 64,
     rangeExtractor: (range) => {
       const id = activeMessageID()

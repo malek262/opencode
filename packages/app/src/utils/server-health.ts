@@ -161,10 +161,18 @@ export const useServerHealth = (servers: Accessor<ServerConnection.Any[]>, enabl
     }
 
     void refresh()
-    const id = setInterval(() => void refresh(), pollMs)
+    const id = setInterval(() => {
+      if (document.hidden) return
+      void refresh()
+    }, pollMs)
+    const onVisible = () => {
+      if (!document.hidden) void refresh()
+    }
+    document.addEventListener("visibilitychange", onVisible)
     onCleanup(() => {
       dead = true
       clearInterval(id)
+      document.removeEventListener("visibilitychange", onVisible)
     })
   })
 

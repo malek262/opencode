@@ -163,6 +163,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
             class="relative z-10 block min-h-[60px] max-h-[180px] w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-4 pt-4 pb-2 text-[13px] font-[440] leading-5 text-v2-text-text-base focus:outline-none empty:before:content-['\200B'] [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
             classList={{ "font-mono!": state.mode === "shell", "opacity-50": props.disabled }}
             onInput={(event) => {
+              syncEditorDirection(event.currentTarget)
               const cursor = promptInputV2Cursor(event.currentTarget)
               const prompt = parsePromptInputV2Editor(event.currentTarget)
               const images = props.controller.parts().filter((part) => part.type === "image")
@@ -269,6 +270,19 @@ export function PromptInputV2(props: PromptInputV2Props) {
   )
 }
 
+const RTL_STRONG = /[\u0590-\u05FF\u0600-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
+const LTR_STRONG = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/
+
+// The editor is a contenteditable in an LTR document: without an explicit direction
+// Arabic input keeps LTR paragraph direction, scrambling mixed lines and left-aligning
+// RTL text. Follow the first strong character, like dir="auto" does for form controls.
+function syncEditorDirection(editor: HTMLDivElement) {
+  const text = editor.textContent ?? ""
+  const rtl = text.search(RTL_STRONG)
+  const ltr = text.search(LTR_STRONG)
+  editor.dir = rtl !== -1 && (ltr === -1 || rtl < ltr) ? "rtl" : "ltr"
+}
+
 function renderPromptInputV2Editor(editor: HTMLDivElement, prompt: PromptInputV2Prompt) {
   const active = document.activeElement === editor
   editor.replaceChildren(
@@ -289,6 +303,7 @@ function renderPromptInputV2Editor(editor: HTMLDivElement, prompt: PromptInputV2
       return [mention]
     }),
   )
+  syncEditorDirection(editor)
   if (!active) return
   const selection = window.getSelection()
   const range = document.createRange()

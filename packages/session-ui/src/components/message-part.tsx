@@ -640,7 +640,7 @@ function sameRef(a: PartRef, b: PartRef) {
   return a.messageID === b.messageID && a.partID === b.partID
 }
 
-export function sameGroup(a: PartGroup, b: PartGroup) {
+function sameGroup(a: PartGroup, b: PartGroup) {
   if (a === b) return true
   if (a.key !== b.key) return false
   if (a.type !== b.type) return false

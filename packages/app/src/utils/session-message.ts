@@ -59,8 +59,8 @@ type NormalizeCache = {
   parts: Array<[string, Part[]]>
   compaction: { parentID: string; part: Part } | undefined
   parentAgent: string | undefined
-  parentModel: { providerID: string; modelID: string; variant?: string } | undefined
-  emittedUser: Message | undefined
+      parentModel: { providerID: string; modelID: string; variant?: string } | undefined
+      emittedUser: UserMessage | undefined
   next: { agent: string; model: NormalizeModel; parentID: string | undefined }
 }
 
@@ -76,7 +76,7 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
   let agent = ""
   let model: NormalizeModel = emptyModel
   let parentID: string | undefined
-  let lastUser: Message | undefined
+  let lastUser: UserMessage | undefined
 
   source.forEach((message) => {
     const cached = normalizeCache.get(message)
@@ -106,7 +106,7 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
     let compaction: { parentID: string; part: Part } | undefined
     let parentAgent: string | undefined
     let parentModel: { providerID: string; modelID: string; variant?: string } | undefined
-    let emittedUser: Message | undefined
+    let emittedUser: UserMessage | undefined
 
     if (message.type === "agent-switched") {
       agent = message.agent
@@ -124,7 +124,7 @@ export function normalizeSessionMessages(sessionID: string, source: readonly Ses
       emittedUser = built
     } else if (message.type === "synthetic" && message.description?.trim()) {
       parentID = message.id
-      const built: Message = {
+      const built: UserMessage = {
         id: message.id,
         sessionID,
         role: "user",

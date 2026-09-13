@@ -438,7 +438,12 @@ export function MessageTimeline(props: {
       }
     },
     anchorTo: "end",
-    followOnAppend: true,
+    // Live getter: TanStack's built-in follow only knows the 80px end-window and would keep
+    // pulling the view down during streaming even after the user scrolled away; defer to the
+    // app-level anchor state (userScrolled, pending reveal) instead.
+    get followOnAppend() {
+      return props.shouldAnchorBottom()
+    },
     scrollEndThreshold: 80,
     get scrollMargin() {
       return showHeader() ? 64 : 0

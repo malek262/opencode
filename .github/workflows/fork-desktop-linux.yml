@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - sidebar-navigation
-      - perf-renderer-2
-      - perf-desktop-main
+      - fix-scroll-snap
   workflow_dispatch:
 
 concurrency:

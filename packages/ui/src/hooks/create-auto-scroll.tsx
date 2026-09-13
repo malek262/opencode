@@ -15,6 +15,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let autoTimer: ReturnType<typeof setTimeout> | undefined
   let auto: { top: number; time: number } | undefined
+  let lastScrollTop = -1
 
   const threshold = () => options.bottomThreshold ?? 10
 
@@ -74,6 +75,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     // `scrollTop` assignment bypasses any CSS `scroll-behavior: smooth`.
     el.scrollTop = el.scrollHeight
+    lastScrollTop = el.scrollTop
   }
 
   const scrollToBottom = (force: boolean) => {
@@ -126,12 +128,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const el = store.scrollRef
     if (!el) return
 
+    const top = el.scrollTop
+    const movedUp = lastScrollTop >= 0 && top < lastScrollTop - 1
+    lastScrollTop = top
+
     if (!canScroll(el)) {
       if (store.userScrolled) setStore("userScrolled", false)
       return
     }
 
     if (distanceFromBottom(el) < threshold()) {
+      // An upward scroll inside the threshold zone means the user is actively leaving the
+      // bottom: high-resolution trackpad/wheel deltas move less than the threshold per
+      // event, and re-engaging follow here would immediately undo the wheel handler's
+      // stop(), letting every bottom-anchoring writer snap the view back down.
+      if (movedUp) return
       if (store.userScrolled) setStore("userScrolled", false)
       return
     }

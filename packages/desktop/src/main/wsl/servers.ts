@@ -11,8 +11,8 @@ import type {
   WslServersEvent,
   WslServersState,
 } from "../../preload/types"
-import { WSL_SERVERS_KEY } from "../store-keys"
-import { getStore } from "../store"
+import { SETTINGS_STORE, WSL_SERVERS_KEY } from "../store-keys"
+import { storeGet, storeSet } from "../store"
 import { expectOpencodeVersion, pendingRestartAfterWslInstall, wslServerIdsToStartOnInitialize } from "./startup"
 import { clearWslDistroState, wslServerIdToRestart } from "./policy"
 import { nativeT } from "../native-translations"
@@ -436,8 +436,7 @@ function initialState(): WslServersState {
 }
 
 function readPersistedServers(): WslServerConfig[] {
-  const store = getStore()
-  const existing = store.get(WSL_SERVERS_KEY)
+  const existing = storeGet(SETTINGS_STORE, WSL_SERVERS_KEY)
   if (existing && typeof existing === "object") {
     const record = existing as { servers?: unknown }
     const list = Array.isArray(record.servers) ? record.servers : []
@@ -447,7 +446,7 @@ function readPersistedServers(): WslServerConfig[] {
 }
 
 function writePersistedServers(servers: WslServerConfig[]) {
-  getStore().set(WSL_SERVERS_KEY, { servers })
+  storeSet(SETTINGS_STORE, WSL_SERVERS_KEY, { servers })
 }
 
 function normalizePersistedServer(value: unknown): WslServerConfig[] {

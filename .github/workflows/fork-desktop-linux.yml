@@ -146,13 +146,17 @@ jobs:
           BASE=$(node -p "require('./packages/desktop/package.json').version")
           VERSION="${BASE}-sidebar.${{ github.run_number }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building OpenCode Desktop version $VERSION"
+          # The packaged app itself reports the plain upstream version so the built-in
+          # updater sees parity with the upstream feed; only the release tag carries the
+          # fork suffix.
+          echo "app=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Building OpenCode Desktop version $VERSION (app version $BASE)"
 
       - name: Prepare
         run: bun ./scripts/prepare.ts
         working-directory: packages/desktop
         env:
-          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
+          OPENCODE_VERSION: ${{ steps.version.outputs.app }}
           OPENCODE_CHANNEL: prod
           RUST_TARGET: x86_64-unknown-linux-gnu
 
@@ -161,7 +165,7 @@ jobs:
         working-directory: packages/desktop
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
+          OPENCODE_VERSION: ${{ steps.version.outputs.app }}
           OPENCODE_CHANNEL: prod
 
       - name: Package

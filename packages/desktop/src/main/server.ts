@@ -4,8 +4,8 @@ import { app, utilityProcess } from "electron"
 import type { Details } from "electron"
 import { getLogger } from "./logging"
 import { getUserShell, loadShellEnv } from "./shell-env"
-import { getStore } from "./store"
-import { DEFAULT_SERVER_URL_KEY } from "./store-keys"
+import { storeDelete, storeGet, storeSet } from "./store"
+import { DEFAULT_SERVER_URL_KEY, SETTINGS_STORE } from "./store-keys"
 
 export type HealthCheck = { wait: Promise<void> }
 
@@ -28,30 +28,35 @@ type SpawnLocalServerOptions = {
 }
 
 export function getDefaultServerUrl(): string | null {
-  const value = getStore().get(DEFAULT_SERVER_URL_KEY)
+  const value = storeGet(SETTINGS_STORE, DEFAULT_SERVER_URL_KEY)
   return typeof value === "string" ? value : null
 }
 
 export function setDefaultServerUrl(url: string | null) {
   if (url) {
-    getStore().set(DEFAULT_SERVER_URL_KEY, url)
+    storeSet(SETTINGS_STORE, DEFAULT_SERVER_URL_KEY, url)
     return
   }
 
-  getStore().delete(DEFAULT_SERVER_URL_KEY)
+  storeDelete(SETTINGS_STORE, DEFAULT_SERVER_URL_KEY)
 }
 
+// The shell probe is async (it can take seconds for interactive rc files); callers that need
+// the probed environment must await the returned promise before spawning child processes.
 export function preferAppEnv(userDataPath: string) {
-  const shell = process.platform === "win32" ? null : getUserShell()
-  const shellEnv = shell ? loadShellEnv(shell, getLogger()) : null
-  Object.assign(process.env, {
-    ...shellEnv,
+  const statics = {
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_CLIENT: "desktop",
     XDG_STATE_HOME: process.env.XDG_STATE_HOME ?? userDataPath,
+  }
+  Object.assign(process.env, statics)
+  const shell = process.platform === "win32" ? null : getUserShell()
+  if (!shell) return Promise.resolve(null)
+  return loadShellEnv(shell, getLogger()).then((shellEnv) => {
+    if (shellEnv) Object.assign(process.env, shellEnv, statics)
+    return shellEnv
   })
-  return shellEnv
 }
 
 export async function spawnLocalServer(
@@ -144,14 +149,20 @@ export async function spawnLocalServer(
   const wait = (async () => {
     const url = `http://${hostname}:${port}`
     let healthy = false
+    let stopped = false
     const gone = exit.promise.then((code) => {
+      stopped = true
       if (healthy) return
       throw new Error(`Sidecar exited before health check passed with code ${code}`)
     })
 
+    // Bound the loop as well: the consumer applies its own timeout and would otherwise
+    // abandon a still-polling promise against a wedged sidecar forever.
+    const deadline = Date.now() + SIDECAR_START_STALL_TIMEOUT
     const ready = async () => {
-      while (true) {
+      while (!stopped && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
+        if (stopped) return
         if (await checkHealth(url, password)) {
           healthy = true
           return

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process"
+import { execFile } from "node:child_process"
 import { userInfo } from "node:os"
 import { basename } from "node:path"
 
@@ -33,32 +33,40 @@ export function parseShellEnv(out: Buffer) {
   return env
 }
 
-function probe(shell: string, mode: "-il" | "-l"): Probe {
-  const out = spawnSync(shell, [mode, "-c", "env -0"], {
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: TIMEOUT,
-    windowsHide: true,
+function probe(shell: string, mode: "-il" | "-l"): Promise<Probe> {
+  return new Promise((resolve) => {
+    execFile(
+      shell,
+      [mode, "-c", "env -0"],
+      {
+        timeout: TIMEOUT,
+        windowsHide: true,
+        encoding: "buffer",
+        maxBuffer: 16 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        if (error) {
+          if (error.killed) {
+            console.log(`[server] Shell env probe timed out for ${shell} ${mode}`)
+            resolve({ type: "Timeout" })
+            return
+          }
+          console.log(`[server] Shell env probe failed for ${shell} ${mode}: ${error.message}`)
+          resolve({ type: "Unavailable" })
+          return
+        }
+
+        const env = parseShellEnv(stdout)
+        if (Object.keys(env).length === 0) {
+          console.log(`[server] Shell env probe returned empty env for ${shell} ${mode}`)
+          resolve({ type: "Unavailable" })
+          return
+        }
+
+        resolve({ type: "Loaded", value: env })
+      },
+    )
   })
-
-  const err = out.error as NodeJS.ErrnoException | undefined
-  if (err) {
-    if (err.code === "ETIMEDOUT") return { type: "Timeout" }
-    console.log(`[server] Shell env probe failed for ${shell} ${mode}: ${err.message}`)
-    return { type: "Unavailable" }
-  }
-
-  if (out.status !== 0) {
-    console.log(`[server] Shell env probe exited with non-zero status for ${shell} ${mode}`)
-    return { type: "Unavailable" }
-  }
-
-  const env = parseShellEnv(out.stdout)
-  if (Object.keys(env).length === 0) {
-    console.log(`[server] Shell env probe returned empty env for ${shell} ${mode}`)
-    return { type: "Unavailable" }
-  }
-
-  return { type: "Loaded", value: env }
 }
 
 export function isNushell(shell: string) {
@@ -67,13 +75,13 @@ export function isNushell(shell: string) {
   return name === "nu" || name === "nu.exe" || raw.endsWith("\\nu.exe")
 }
 
-export function loadShellEnv(shell: string, logger: ShellEnvLogger) {
+export async function loadShellEnv(shell: string, logger: ShellEnvLogger) {
   if (isNushell(shell)) {
     logger.log(`[server] Skipping shell env probe for nushell: ${shell}`)
     return null
   }
 
-  const interactive = probe(shell, "-il")
+  const interactive = await probe(shell, "-il")
   if (interactive.type === "Loaded") {
     logger.log(`[server] Loaded shell environment with -il (${Object.keys(interactive.value).length} vars)`)
     return interactive.value
@@ -83,7 +91,7 @@ export function loadShellEnv(shell: string, logger: ShellEnvLogger) {
     return null
   }
 
-  const login = probe(shell, "-l")
+  const login = await probe(shell, "-l")
   if (login.type === "Loaded") {
     logger.log(`[server] Loaded shell environment with -l (${Object.keys(login.value).length} vars)`)
     return login.value

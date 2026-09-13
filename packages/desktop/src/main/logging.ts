@@ -2,7 +2,6 @@ import { MainLogger } from "electron-log"
 import log from "electron-log/main.js"
 import { app, crashReporter, netLog, shell } from "electron"
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { ZipWriter, BlobWriter, BlobReader } from "@zip.js/zip.js"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
 
@@ -22,6 +21,9 @@ export const getLogger = () => logger
 export function initLogging() {
   initRunDirectory()
   log.transports.file.maxSize = 5 * 1024 * 1024
+  // Synchronous appends block the main process on every line, including every spied
+  // renderer console message; the async queue keeps logging off the critical path.
+  log.transports.file.sync = false
   log.transports.file.resolvePathFn = (_vars, message) =>
     join(
       run,
@@ -179,6 +181,7 @@ function collect(dir: string, prefix: string): Entry[] {
 }
 
 async function writeZip(output: string, entries: Entry[]) {
+  const { ZipWriter, BlobWriter, BlobReader } = await import("@zip.js/zip.js")
   const writer = new ZipWriter(new BlobWriter("application/zip"))
   for (const entry of entries) {
     const data = entry.data ?? readFileSync(entry.path!)

@@ -3,19 +3,20 @@ import pkg from "electron-updater"
 import { UPDATER_ENABLED } from "./constants"
 import { createUpdaterController, type UpdaterReadyRecord } from "./updater-controller"
 import { getLogger } from "./logging"
-import { getStore } from "./store"
+import { storeDelete, storeGet, storeSet } from "./store"
 import { setAppQuitting } from "./windows"
 import { nativeT } from "./native-translations"
 
 const { autoUpdater } = pkg
 const key = "ready"
+const UPDATER_STORE = "opencode.updater"
 
 export function setupAutoUpdater(stop: () => Promise<void>) {
   const logger = getLogger()
   autoUpdater.logger = logger
   autoUpdater.channel = "latest"
   autoUpdater.allowPrerelease = false
-  autoUpdater.allowDowngrade = true
+  autoUpdater.allowDowngrade = false
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
   logger.log("auto updater configured", {
@@ -25,7 +26,6 @@ export function setupAutoUpdater(stop: () => Promise<void>) {
     currentVersion: app.getVersion(),
   })
 
-  const store = getStore("opencode.updater")
   return createUpdaterController({
     enabled: UPDATER_ENABLED,
     currentVersion: app.getVersion(),
@@ -48,12 +48,12 @@ export function setupAutoUpdater(stop: () => Promise<void>) {
     },
     persistence: {
       get() {
-        const value = store.get(key)
+        const value = storeGet(UPDATER_STORE, key)
         if (!value || typeof value !== "object" || !("version" in value) || typeof value.version !== "string") return
         return { version: value.version } satisfies UpdaterReadyRecord
       },
-      set: (value) => store.set(key, value),
-      clear: () => store.delete(key),
+      set: (value) => storeSet(UPDATER_STORE, key, value),
+      clear: () => storeDelete(UPDATER_STORE, key),
     },
     stop,
     log: (message, data) => logger.log(message, data),

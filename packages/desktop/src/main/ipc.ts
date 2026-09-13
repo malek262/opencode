@@ -10,7 +10,7 @@ import type { FatalRendererError, ServerReadyData, TitlebarTheme } from "../prel
 import { runDesktopMenuAction } from "./desktop-menu-actions"
 import { setForceFocus } from "./debug"
 import { assertAttachmentBudget, createPickedFileAuthorizations } from "./attachment-picker"
-import { getStore, removeStoreFileIfEmpty } from "./store"
+import { getStore, removeStoreFileIfEmpty, storeClear, storeDelete, storeGet, storeSet } from "./store"
 import {
   getPinchZoomEnabled,
   getWindowID,
@@ -113,8 +113,7 @@ export function registerIpcHandlers(deps: Deps) {
   })
   ipcMain.handle("store-get", (_event: IpcMainInvokeEvent, name: string, key: string) => {
     try {
-      const store = getStore(name)
-      const value = store.get(key)
+      const value = storeGet(name, key)
       if (value === undefined || value === null) return null
       return typeof value === "string" ? value : JSON.stringify(value)
     } catch {
@@ -122,14 +121,14 @@ export function registerIpcHandlers(deps: Deps) {
     }
   })
   ipcMain.handle("store-set", (_event: IpcMainInvokeEvent, name: string, key: string, value: string) => {
-    getStore(name).set(key, value)
+    storeSet(name, key, value)
   })
   ipcMain.handle("store-delete", (_event: IpcMainInvokeEvent, name: string, key: string) => {
-    getStore(name).delete(key)
+    storeDelete(name, key)
     void removeStoreFileIfEmpty(name)
   })
   ipcMain.handle("store-clear", (_event: IpcMainInvokeEvent, name: string) => {
-    getStore(name).clear()
+    storeClear(name)
     void removeStoreFileIfEmpty(name)
   })
   ipcMain.handle("store-keys", (_event: IpcMainInvokeEvent, name: string) => {

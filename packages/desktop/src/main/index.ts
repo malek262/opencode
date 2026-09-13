@@ -13,7 +13,7 @@ import contextMenu from "electron-context-menu"
 
 import type { ServerReadyData } from "../preload/types"
 import { checkAppExists, resolveAppPath } from "./apps"
-import { CHANNEL } from "./constants"
+import { CHANNEL, NET_LOG_ENABLED } from "./constants"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
@@ -200,7 +200,7 @@ const main = Effect.gen(function* () {
     return
   }
 
-  const shellEnv = preferAppEnv(app.getPath("userData"))
+  const shellEnv = preferAppEnv(app.getPath("userData")).catch(() => null)
 
   app.on("second-instance", (_event: Event, argv: string[]) => {
     const urls = argv.filter((arg: string) => arg.startsWith("opencode://"))
@@ -255,18 +255,15 @@ const main = Effect.gen(function* () {
   yield* Effect.promise(() => app.whenReady())
 
   if (!TEST_ONBOARDING) migrate()
-  yield* Effect.promise(() => cleanupStoreFiles(app.getPath("userData"))).pipe(
-    Effect.tap((result) =>
-      Effect.sync(() => {
-        if (result.deleted.length === 0) return
-        logger.log("cleaned scoped store files", { count: result.deleted.length, scanned: result.scanned })
-      }),
-    ),
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        logger.warn("failed to clean scoped store files", error)
-      }),
-    ),
+  // Housekeeping must not gate first paint; it only deletes stale scoped store files.
+  void cleanupStoreFiles(app.getPath("userData")).then(
+    (result) => {
+      if (result.deleted.length === 0) return
+      logger.log("cleaned scoped store files", { count: result.deleted.length, scanned: result.scanned })
+    },
+    (error) => {
+      logger.warn("failed to clean scoped store files", error)
+    },
   )
   app.setAsDefaultProtocolClient("opencode")
   registerRendererProtocol()
@@ -316,23 +313,24 @@ const main = Effect.gen(function* () {
   const updateTimer = setInterval(() => void updater.check(), 10 * 60 * 1000)
   updateTimer.unref()
   app.once("will-quit", () => clearInterval(updateTimer))
-  yield* Effect.promise(() => startNetLog()).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        logger.warn("failed to start net log", error)
-      }),
-    ),
-  )
+  if (NET_LOG_ENABLED)
+    void startNetLog().catch((error) => {
+      logger.warn("failed to start net log", error)
+    })
 
   const loadingTask = yield* Effect.gen(function* () {
     logger.log("sidecar connection started", { version: SIDECAR_VERSION })
+
+    // Awaited here (not at boot): the probe can take seconds for interactive rc files, and
+    // only the sidecar spawn and the proxy re-application below need its environment.
+    const shellEnvValue = yield* Effect.promise(() => shellEnv)
 
     ensureLoopbackNoProxy()
     useEnvProxy()
 
     if (SIDECAR_VERSION === "v2") {
       logger.log("spawning v2 sidecar")
-      const sidecar = yield* Effect.promise(() => startBackgroundCli(logger, shellEnv?.XDG_STATE_HOME))
+      const sidecar = yield* Effect.promise(() => startBackgroundCli(logger, shellEnvValue?.XDG_STATE_HOME))
       yield* Deferred.succeed(serverReady, {
         url: sidecar.url,
         username: sidecar.username,

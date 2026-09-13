@@ -9,8 +9,8 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import type { TitlebarTheme } from "../preload/types"
 import { exportDebugLogs, write as writeLog } from "./logging"
-import { getStore, removeStoreFile } from "./store"
-import { PINCH_ZOOM_ENABLED_KEY, WINDOW_IDS_KEY } from "./store-keys"
+import { removeStoreFile, storeGet, storeSet } from "./store"
+import { PINCH_ZOOM_ENABLED_KEY, SETTINGS_STORE, WINDOW_IDS_KEY } from "./store-keys"
 import { createUnresponsiveSampler } from "./unresponsive"
 import { nativeT } from "./native-translations"
 import { createWindowRegistry } from "./window-registry"
@@ -54,8 +54,8 @@ const titlebarThemes = new WeakMap<BrowserWindow, Partial<TitlebarTheme>>()
 const pinchZoomEnabled = new WeakMap<BrowserWindow, boolean>()
 const windowIDs = new WeakMap<BrowserWindow, string>()
 const registry = createWindowRegistry<BrowserWindow>({
-  read: () => getStore().get(WINDOW_IDS_KEY),
-  write: (ids) => getStore().set(WINDOW_IDS_KEY, ids),
+  read: () => storeGet(SETTINGS_STORE, WINDOW_IDS_KEY),
+  write: (ids) => storeSet(SETTINGS_STORE, WINDOW_IDS_KEY, ids),
   cleanup: (id) => {
     rmSync(join(app.getPath("userData"), windowStateFile(id)), { force: true })
     removeStoreFile(windowDataFile(id))
@@ -129,7 +129,7 @@ export function updateTitlebar(win: BrowserWindow) {
 }
 
 export function setPinchZoomEnabled(enabled: boolean) {
-  getStore().set(PINCH_ZOOM_ENABLED_KEY, enabled)
+  storeSet(SETTINGS_STORE, PINCH_ZOOM_ENABLED_KEY, enabled)
   for (const win of BrowserWindow.getAllWindows()) {
     pinchZoomEnabled.set(win, enabled)
     win.webContents.send("pinch-zoom-enabled-changed", enabled)
@@ -139,7 +139,7 @@ export function setPinchZoomEnabled(enabled: boolean) {
 }
 
 export function getPinchZoomEnabled() {
-  return getStore().get(PINCH_ZOOM_ENABLED_KEY) === true
+  return storeGet(SETTINGS_STORE, PINCH_ZOOM_ENABLED_KEY) === true
 }
 
 export function getWindowID(win: BrowserWindow) {

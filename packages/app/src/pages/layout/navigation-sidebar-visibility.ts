@@ -1,6 +1,6 @@
 import type { Session } from "@opencode-ai/sdk/v2/client"
 import type { LocalProject } from "@/context/layout"
-import { displayName, projectForSession } from "@/pages/layout/helpers"
+import { displayName } from "@/pages/layout/helpers"
 import { pathKey } from "@/utils/path-key"
 
 export const SIDEBAR_SESSION_DAY = 86_400_000
@@ -27,23 +27,23 @@ function compareSessionCreated(a: Session, b: Session) {
   return a.id < b.id ? -1 : 1
 }
 
-export function buildSidebarRecords(input: { sessions: Session[]; projects: LocalProject[] }) {
-  const projectByID = new Map(input.projects.flatMap((project) => (project.id ? [[project.id, project]] : [])))
-  const directories = new Set(
-    input.projects.flatMap((project) => [project.worktree, ...(project.sandboxes ?? [])]).map(pathKey),
+export function projectDirectoryMap(projects: LocalProject[]) {
+  return new Map(
+    projects.flatMap((project) => [
+      [pathKey(project.worktree), project] as const,
+      ...(project.sandboxes ?? []).map((sandbox) => [pathKey(sandbox), project] as const),
+    ]),
   )
-  const sessions = input.sessions
-    .filter((session) => directories.has(pathKey(session.directory)))
-    .filter((session) => !session.parentID)
+}
+
+export function buildSidebarRecords(input: { sessions: Session[]; projects: LocalProject[] }) {
+  const projectByDirectory = projectDirectoryMap(input.projects)
+  const sessions = input.sessions.filter((session) => !session.parentID)
   const unique = [...new Map(sessions.map((session) => [session.id, session] as const)).values()].sort(
     compareSessionCreated,
   )
   return unique.flatMap((session): SidebarSessionRecord[] => {
-    const directory = pathKey(session.directory)
-    const project =
-      input.projects.find(
-        (item) => pathKey(item.worktree) === directory || item.sandboxes?.some((sandbox) => pathKey(sandbox) === directory),
-      ) ?? projectForSession(session, input.projects, projectByID)
+    const project = projectByDirectory.get(pathKey(session.directory))
     if (!project) return []
     return [{ key: session.id, session, project, name: displayName(project) }]
   })

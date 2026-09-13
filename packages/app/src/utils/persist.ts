@@ -14,6 +14,43 @@ type PersistedWithReady<T> = [
   Accessor<boolean> & { promise: undefined | Promise<any> },
 ]
 
+// Persisted stores re-serialize the entire store on every mutation, so rapid UI changes
+// (typing, layout drags, tab switches) would otherwise spam serialization plus IPC and
+// synchronous main-process disk writes. Coalesce each store's writes into a 250ms window;
+// pending writes flush on document hide and page unload.
+const PERSIST_WRITE_INTERVAL_MS = 250
+const pendingWriteFlushes = new Set<() => void>()
+
+if (typeof window !== "undefined") {
+  const flushPendingWrites = () => {
+    for (const flush of pendingWriteFlushes) flush()
+  }
+  window.addEventListener("pagehide", flushPendingWrites)
+  window.addEventListener("beforeunload", flushPendingWrites)
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) flushPendingWrites()
+  })
+}
+
+function coalescedWrite(write: (key: string, value: string) => unknown) {
+  let pending: { key: string; value: string } | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const flush = () => {
+    timer = undefined
+    const next = pending
+    pending = undefined
+    if (next) write(next.key, next.value)
+  }
+  pendingWriteFlushes.add(flush)
+  return Object.assign(
+    (key: string, value: string) => {
+      pending = { key, value }
+      if (timer === undefined) timer = setTimeout(flush, PERSIST_WRITE_INTERVAL_MS)
+    },
+    { flush },
+  )
+}
+
 type PersistTarget = {
   draft?: boolean
   storage?: string
@@ -607,6 +644,7 @@ export function persisted<T>(
       const legacyStore = legacyStorage as SyncStorage
       const legacyStores = legacyStorageNames.map(localStorageWithPrefix)
 
+      const scheduleSet = coalescedWrite((key, value) => current.setItem(key, value))
       const api: SyncStorage = {
         getItem: (key) => {
           const value = readCurrent({ storage: current, key, defaults, migrate: config.migrate })
@@ -621,10 +659,9 @@ export function persisted<T>(
             migrate: config.migrate,
           })
         },
-        setItem: (key, value) => {
-          current.setItem(key, value)
-        },
+        setItem: (key, value) => scheduleSet(key, value),
         removeItem: (key) => {
+          scheduleSet.flush()
           current.removeItem(key)
         },
       }
@@ -649,6 +686,7 @@ export function persisted<T>(
       .map(toAsyncStorage)
     let draftLatest: string | undefined
 
+    const scheduleSet = coalescedWrite((key, value) => void current.setItem(key, value))
     const api: AsyncStorage = {
       getItem: async (key) => {
         const value = await readCurrentAsync({ storage: current, key, defaults, migrate: config.migrate })
@@ -671,9 +709,10 @@ export function persisted<T>(
       },
       setItem: async (key, value) => {
         if (draft) draftLatest = value
-        await current.setItem(key, value)
+        scheduleSet(key, value)
       },
       removeItem: async (key) => {
+        scheduleSet.flush()
         await current.removeItem(key)
       },
     }

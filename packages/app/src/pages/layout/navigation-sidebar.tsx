@@ -38,6 +38,7 @@ import {
   groupSidebarRecords,
   matchesSidebarFilter,
   partitionSidebarRecords,
+  projectDirectoryMap,
   type SidebarProjectGroup,
   type SidebarSessionRecord,
 } from "@/pages/layout/navigation-sidebar-visibility"
@@ -112,6 +113,12 @@ export function NavigationSidebar() {
   const pickDirectory = useDirectoryPicker()
 
   const [filter, setFilter] = createSignal("")
+  const [filterQuery, setFilterQuery] = createSignal("")
+  createEffect(() => {
+    const value = filter()
+    const timer = setTimeout(() => setFilterQuery(value), 100)
+    onCleanup(() => clearTimeout(timer))
+  })
   const [now, setNow] = createSignal(Date.now())
   const [tick, setTick] = createSignal(Date.now())
   const [state, setState] = persisted(
@@ -253,7 +260,7 @@ export function NavigationSidebar() {
 
   const computedSections = createMemo((): SidebarProjectSection[] => {
     const records = buildSidebarRecords({ sessions: sessions(), projects: home.project.list() }).filter((record) =>
-      matchesSidebarFilter(record, filter()),
+      matchesSidebarFilter(record, filterQuery()),
     )
     const grouped = groupSidebarRecords(records).map((group) => {
       const parts = partitionSidebarRecords({
@@ -314,6 +321,8 @@ export function NavigationSidebar() {
     staleTime: 300_000,
   }))
 
+  const projectByDirectory = createMemo(() => projectDirectoryMap(home.project.list()))
+
   const computedSettledGroups = createMemo((): SettledGroup[] => {
     const map = new Map<string, SettledGroup>()
     const push = (record: SidebarSessionRecord, kind: "local" | "archived") => {
@@ -355,8 +364,7 @@ export function NavigationSidebar() {
   }
 
   function projectOf(session: { directory: string }) {
-    const directory = pathKey(session.directory)
-    return home.project.list().find((item) => pathKey(item.worktree) === directory)
+    return projectByDirectory().get(pathKey(session.directory))
   }
 
   function branchOf(directory: string) {

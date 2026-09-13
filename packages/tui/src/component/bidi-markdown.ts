@@ -80,12 +80,20 @@ function proseFiletype(renderable: CodeRenderable) {
   return (renderable as unknown as { filetype?: unknown }).filetype
 }
 
+const rtlProbeCache = new WeakMap<CodeRenderable, { content: string; rtl: boolean }>()
+
 function shouldBidiPaint(renderable: CodeRenderable) {
   if (renderable.width <= 0) return false
-  const filetype = proseFiletype(renderable)
-  if (filetype !== undefined && filetype !== "markdown") return false
+  // Only markdown-module prose carries filetype "markdown"; fenced code has a language
+  // filetype or none at all (unlabeled fences), and must always keep the stock LTR path.
+  if (proseFiletype(renderable) !== "markdown") return false
   const content = renderable.content
-  return typeof content === "string" && hasRtl(content)
+  if (typeof content !== "string") return false
+  const cached = rtlProbeCache.get(renderable)
+  if (cached && cached.content === content) return cached.rtl
+  const rtl = hasRtl(content)
+  rtlProbeCache.set(renderable, { content, rtl })
+  return rtl
 }
 
 // Wraps onChunks once per instance so tree-sitter styled chunks are captured

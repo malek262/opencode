@@ -205,4 +205,21 @@ describe("bidi cursor mapping", () => {
     const back = boundaryToVisual(layout, boundary)
     expect(Math.abs(back.col - 5)).toBeLessThanOrEqual(1)
   })
+
+  test("detects RTL scripts beyond Hebrew and Arabic", () => {
+    expect(hasRtl("ދިވެހި")).toBe(true)
+    expect(hasRtl("ߒߞߏ")).toBe(true)
+    expect(hasRtl("\u202eabc")).toBe(true)
+  })
+
+  test("visualStep strictly progresses across hard-wrapped line boundaries", () => {
+    const layout = layoutBidiText("abcdefgh", 3)
+    expect(layout.lines.length).toBeGreaterThan(1)
+    for (let i = 0; i < layout.lines.length - 1; i++) {
+      expect(visualStep(layout, layout.lines[i].end, 1)).toBeGreaterThan(layout.lines[i].end)
+    }
+    for (let i = 1; i < layout.lines.length; i++) {
+      expect(visualStep(layout, layout.lines[i].start, -1)).toBeLessThan(layout.lines[i].start)
+    }
+  })
 })

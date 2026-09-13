@@ -16,10 +16,10 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
 const LRI = "\u2066"
 const PDI = "\u2069"
 
-// Strong RTL coverage: Hebrew, Arabic, Syriac, Thaana, NKO, Samaritan,
-// Mandaic, extensions, presentation forms, RLM/ALM/RLE/RLO.
-const RTL_PROBE =
-  /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0860-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u200F\u202B\u061C]/
+// Strong RTL coverage: Hebrew through Syriac Supplement (0590-08FF covers
+// Hebrew, Arabic + supplements, Syriac, Thaana, NKo, Samaritan, Mandaic),
+// presentation forms, RLM/ALM/RLE/RLO.
+const RTL_PROBE = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u200F\u202B\u202E]/
 
 export function hasRtl(text: string) {
   return RTL_PROBE.test(text)
@@ -33,7 +33,7 @@ export function hasRtl(text: string) {
 // surrounding neutrals (backticks, asterisks, colons, dots, slashes,
 // brackets) cannot leak into them or split them apart.
 const LTR_ISLAND =
-  /`[^`\n]+`|[A-Za-z]:\\[A-Za-z0-9_@.\\-]*(?: +[A-Za-z0-9_@.\\-]+)*(?::\d+)?|(?:https?:\/\/|www\.)\S+|[A-Za-z0-9_@]+(?:[/\\.-][A-Za-z0-9_@-]+)+(?::\d+)?|[A-Za-z0-9_@]+:\d+|\d+(?:[.,:/]\d+)*%?/g
+  /`[^`\n]+`|[A-Za-z]:\\[A-Za-z0-9_@.\\-]*(?: +[A-Za-z0-9_@-]+)*(?::\d+)?|(?:https?:\/\/|www\.)[^\s\u0590-\u08FF]+|[A-Za-z0-9_@]+(?:[/\\.-][A-Za-z0-9_@-]+)+(?::\d+)?|[A-Za-z0-9_@]+:\d+|\d+(?:[.,:/]\d+)*%?/g
 
 export type BidiGlyph = {
   char: string
@@ -574,11 +574,14 @@ export function visualStep(layout: BidiLayout, boundary: number, dir: -1 | 1) {
     if (candidate !== -1) return line.start + candidate
     if (position.line > 0) {
       const previous = layout.lines[position.line - 1]
-      let maxIndex = 0
-      for (let i = 1; i < previous.boundaryCols.length; i++) {
-        if ((previous.boundaryCols[i] ?? 0) > (previous.boundaryCols[maxIndex] ?? 0)) maxIndex = i
+      // Hard-wrapped lines share a boundary glyph (line0.end === line1.start); landing
+      // back on the same boundary would dead-stop the caret, so require strict progress.
+      let maxIndex = -1
+      for (let i = 0; i < previous.boundaryCols.length; i++) {
+        if (previous.start + i >= boundary) continue
+        if (maxIndex === -1 || (previous.boundaryCols[i] ?? 0) > (previous.boundaryCols[maxIndex] ?? 0)) maxIndex = i
       }
-      return previous.start + maxIndex
+      if (maxIndex !== -1) return previous.start + maxIndex
     }
     return boundary
   }
@@ -590,11 +593,12 @@ export function visualStep(layout: BidiLayout, boundary: number, dir: -1 | 1) {
   if (candidate !== -1) return line.start + candidate
   if (position.line < layout.lines.length - 1) {
     const next = layout.lines[position.line + 1]
-    let minIndex = 0
-    for (let i = 1; i < next.boundaryCols.length; i++) {
-      if ((next.boundaryCols[i] ?? 0) < (next.boundaryCols[minIndex] ?? 0)) minIndex = i
+    let minIndex = -1
+    for (let i = 0; i < next.boundaryCols.length; i++) {
+      if (next.start + i <= boundary) continue
+      if (minIndex === -1 || (next.boundaryCols[i] ?? 0) < (next.boundaryCols[minIndex] ?? 0)) minIndex = i
     }
-    return next.start + minIndex
+    if (minIndex !== -1) return next.start + minIndex
   }
   return boundary
 }

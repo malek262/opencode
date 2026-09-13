@@ -11,6 +11,8 @@ export class BidiTextRenderable extends TextRenderable {
   private bidiWrapped: string | undefined
   private bidiLayout: BidiLayout | undefined
   private bidiWidth = 0
+  private bidiProbeText: string | undefined
+  private bidiProbeRtl = false
 
   protected override renderSelf(buffer: OptimizedBuffer): void {
     const plain = this.plainText
@@ -21,7 +23,12 @@ export class BidiTextRenderable extends TextRenderable {
       this.bidiLayout = undefined
     }
     const source = this.bidiSource ?? plain
-    if (!hasRtl(source) || this.width <= 0) {
+    // Memoized RTL probe: English-only content must not pay a regex scan per repaint.
+    if (source !== this.bidiProbeText) {
+      this.bidiProbeText = source
+      this.bidiProbeRtl = hasRtl(source)
+    }
+    if (!this.bidiProbeRtl || this.width <= 0) {
       this.restoreLogical(source, plain)
       super.renderSelf(buffer)
       return

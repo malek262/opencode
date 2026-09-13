@@ -306,6 +306,16 @@
   unicode-bidi: plaintext;
 }
 
+/* The block wrappers above render as `display: contents`, so they generate no box and
+   their unicode-bidi never reaches the text. Apply per-block direction on the real text
+   elements: each paragraph/heading/list item takes its direction from its first strong
+   character (RTL paragraphs align to start = right), while embedded LTR runs (code,
+   URLs, numbers) stay ordered by the browser's native bidi. Fenced/inline code keep
+   their explicit LTR isolation above. */
+[data-component="markdown"] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption, dt, dd) {
+  unicode-bidi: plaintext;
+}
+
 body[data-new-layout] [data-component="markdown"] {
   [data-slot="markdown-copy-button"]::after {
     box-sizing: border-box;

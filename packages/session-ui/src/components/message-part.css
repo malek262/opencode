@@ -1580,3 +1580,10 @@ body:not([data-new-layout]) {
     color: var(--text-weak);
   }
 }
+
+/* Agent-authored question/answer copy can be RTL or mixed: take direction from the
+   content's first strong character instead of forcing the surrounding LTR layout. */
+[data-slot="question-text"],
+[data-slot="question-answer-item"] {
+  unicode-bidi: plaintext;
+}

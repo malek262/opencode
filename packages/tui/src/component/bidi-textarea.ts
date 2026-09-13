@@ -20,10 +20,17 @@ import {
 export class BidiTextareaRenderable extends TextareaRenderable {
   private bidiState: { source: string; width: number; layout: BidiLayout; scroll: number } | undefined
   private bidiDesiredCol: number | undefined
+  private bidiProbeText: string | undefined
+  private bidiProbeRtl = false
 
   private bidiLayout() {
     const source = this.plainText
-    if (!hasRtl(source)) {
+    // Memoized RTL probe: English-only prompts must not pay a regex scan per repaint.
+    if (source !== this.bidiProbeText) {
+      this.bidiProbeText = source
+      this.bidiProbeRtl = hasRtl(source)
+    }
+    if (!this.bidiProbeRtl) {
       this.bidiState = undefined
       return undefined
     }

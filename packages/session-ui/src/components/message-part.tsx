@@ -708,14 +708,22 @@ function index<T extends { id: string }>(items: readonly T[]) {
   return new Map(items.map((item) => [item.id, item] as const))
 }
 
+// trim()-equivalent emptiness check without the O(text) allocation: streaming deltas re-run
+// renderable() over every text part of the session, and [^\s] exits at the first visible char.
+const NON_WHITESPACE = /[^\s]/
+
+function hasVisibleText(text: string | undefined) {
+  return text !== undefined && NON_WHITESPACE.test(text)
+}
+
 export function renderable(part: PartType, showReasoningSummaries = true) {
   if (part.type === "tool") {
     if (HIDDEN_TOOLS.has(part.tool)) return false
     if (part.tool === "question") return part.state.status !== "pending" && part.state.status !== "running"
     return true
   }
-  if (part.type === "text") return !!part.text?.trim()
-  if (part.type === "reasoning") return showReasoningSummaries && !!part.text?.trim()
+  if (part.type === "text") return hasVisibleText(part.text)
+  if (part.type === "reasoning") return showReasoningSummaries && hasVisibleText(part.text)
   return !!PART_MAPPING[part.type]
 }
 
@@ -1706,10 +1714,13 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   )
   const text = () => readPartText(data.store.part_text_accum_delta, part())
   const isLastTextPart = createMemo(() => {
-    const last = (data.store.part?.[props.message.id] ?? [])
-      .filter((item): item is TextPart => item?.type === "text" && !!item.text?.trim())
-      .at(-1)
-    return last?.id === part().id
+    const parts = data.store.part?.[props.message.id] ?? []
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const item = parts[i]
+      if (item?.type !== "text" || !hasVisibleText(item.text)) continue
+      return item.id === part().id
+    }
+    return false
   })
   const showCopy = createMemo(() => {
     if (props.message.role !== "assistant") return isLastTextPart()

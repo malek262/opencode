@@ -260,6 +260,11 @@ export function NavigationSidebar() {
     void sessionIndex.refetch()
   })
 
+  const openTabSessionIDs = createMemo(() => {
+    const server = serverKey()
+    return new Set(tabs.store.flatMap((tab) => (tab.type === "session" && tab.server === server ? [tab.sessionId] : [])))
+  })
+
   const computedSections = createMemo((): SidebarProjectSection[] => {
     const records = buildSidebarRecords({ sessions: sessions(), projects: home.project.list() }).filter((record) =>
       matchesSidebarFilter(record, filterQuery()),
@@ -362,7 +367,7 @@ export function NavigationSidebar() {
     if (isPinned(record.session.id)) return true
     if (record.session.id === currentSession()) return true
     if (working(record.session.id)) return true
-    return sessionHasOpenTab(tabs.store, serverKey(), record.session)
+    return openTabSessionIDs().has(record.session.id)
   }
 
   function projectOf(session: { directory: string }) {

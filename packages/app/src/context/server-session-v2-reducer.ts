@@ -429,7 +429,11 @@ function update(
   id: string,
   apply: (item: SessionMessageInfo) => SessionMessageInfo,
 ) {
-  return source.map((item) => (item.id === id ? apply(item) : item))
+  const index = source.findIndex((item) => item.id === id)
+  if (index === -1) return [...source]
+  const next = source.slice()
+  next[index] = apply(next[index])
+  return next
 }
 
 function updateMessage<T extends SessionMessageInfo>(
@@ -438,12 +442,14 @@ function updateMessage<T extends SessionMessageInfo>(
   apply: (item: T) => T,
   sessionID: string,
 ): V2SessionReduction {
-  const current = source.findLast(matches)
-  if (!current) return { sessionID, messages: [...source], touched: [] }
+  const index = source.findLastIndex(matches)
+  if (index === -1) return { sessionID, messages: [...source], touched: [] }
+  const next = source.slice()
+  next[index] = apply(next[index] as T)
   return {
     sessionID,
-    messages: update(source, current.id, (item) => (matches(item) ? apply(item) : item)),
-    touched: [current.id],
+    messages: next,
+    touched: [next[index].id],
   }
 }
 
@@ -453,10 +459,15 @@ function updateAssistant(
   sessionID: string,
   apply: (item: Assistant) => Assistant,
 ): V2SessionReduction {
+  const index = source.findIndex((item) => item.id === id)
+  const current = index === -1 ? undefined : source[index]
+  if (!current || current.type !== "assistant") return { sessionID, messages: [...source], touched: [] }
+  const next = source.slice()
+  next[index] = apply(current)
   return {
     sessionID,
-    messages: update(source, id, (item) => (item.type === "assistant" ? apply(item) : item)),
-    touched: source.some((item) => item.id === id && item.type === "assistant") ? [id] : [],
+    messages: next,
+    touched: [id],
   }
 }
 

@@ -25,6 +25,7 @@ import {
   MessageDivider,
   Part as MessagePart,
   partDefaultOpen,
+  renderable,
   type UserActions,
 } from "@opencode-ai/session-ui/message-part"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
@@ -965,7 +966,7 @@ export function MessageTimeline(props: {
       const parts = getMsgParts(message.id)
       for (let j = parts.length - 1; j >= 0; j--) {
         const part = parts[j]
-        if (!part || part.type !== "text" || !part.text?.trim()) continue
+        if (!part || part.type !== "text" || !renderable(part)) continue
         return part.id
       }
     }

@@ -8,6 +8,7 @@ on:
       - perf-quickwins
       - perf-sidebar
       - perf-streaming
+      - perf-open-latency
   workflow_dispatch:
 
 concurrency:

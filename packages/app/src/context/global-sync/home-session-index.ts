@@ -174,6 +174,11 @@ export function applyHomeSessionEvent(sessions: Session[], event: HomeSessionEve
   }
   if (event.type !== "session.created" && event.type !== "session.updated") return sessions
   if (index === -1) return [...sessions, info]
+  // Usage/touch events often carry no visible change; keeping array identity lets the
+  // retain cache and downstream memos skip the whole pipeline.
+  const current = sessions[index]
+  if (current.directory === info.directory && current.title === info.title && current.time.updated === info.time.updated)
+    return sessions
   return sessions.with(index, info)
 }
 

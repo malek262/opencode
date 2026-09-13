@@ -470,13 +470,22 @@ const layer = Layer.effect(
             )
           deps.push(dep)
 
-          result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
-          result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
-          result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
+          // The four loaders are independent reads; run them concurrently per directory and
+          // apply merges in the original order so overrides stay deterministic.
+          const [command, agent, agentMode, pluginList] = yield* Effect.promise(() =>
+            Promise.all([
+              ConfigCommand.load(dir),
+              ConfigAgent.load(dir),
+              ConfigAgent.loadMode(dir),
+              ConfigPlugin.load(dir),
+            ]),
+          )
+          result.command = mergeDeep(result.command ?? {}, command)
+          result.agent = mergeDeep(result.agent ?? {}, agent)
+          result.agent = mergeDeep(result.agent ?? {}, agentMode)
           // Auto-discovered plugins under `.opencode/plugin(s)` are already local files, so ConfigPlugin.load
           // returns normalized Specs and we only need to attach origin metadata here.
-          const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
-          yield* mergePluginOrigins(dir, list)
+          yield* mergePluginOrigins(dir, pluginList)
         }
 
         if (process.env.OPENCODE_CONFIG_CONTENT) {

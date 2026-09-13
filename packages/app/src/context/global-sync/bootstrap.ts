@@ -372,7 +372,9 @@ export async function bootstrapDirectory(input: {
   const rev = (providerRev.get(revKey) ?? 0) + 1
   providerRev.set(revKey, rev)
   ;(async () => {
-    const slow = [
+    // Essentials gate the sync status (and therefore the UI); everything else keeps loading
+    // in parallel without holding first paint hostage.
+    const essential = [
       () => Promise.resolve(input.loadSessions(input.directory)),
       () =>
         input.queryClient
@@ -423,6 +425,8 @@ export async function bootstrapDirectory(input: {
               const next = projectID(data.directory ?? input.directory, input.global.project)
               if (next) input.setStore("project", next)
             })),
+    ].filter(Boolean) as (() => Promise<any>)[]
+    const deferred = [
       () =>
         retry(async () => {
           if ((await input.protocol) !== "v1") return
@@ -537,17 +541,21 @@ export async function bootstrapDirectory(input: {
     ].filter(Boolean) as (() => Promise<any>)[]
 
     await waitForPaint()
-    const slowErrs = errors(await runAll(slow))
-    if (slowErrs.length > 0) {
-      console.error("Failed to finish bootstrap instance", slowErrs[0])
+    const deferredDone = runAll(deferred)
+    const essentialErrs = errors(await runAll(essential))
+    if (essentialErrs.length > 0) {
+      console.error("Failed to finish bootstrap instance", essentialErrs[0])
       const project = getFilename(input.directory)
       showToast({
         variant: "error",
         title: input.translate("toast.project.reloadFailed.title", { project }),
-        description: formatServerError(slowErrs[0], input.translate),
+        description: formatServerError(essentialErrs[0], input.translate),
       })
     }
 
-    if (loading && slowErrs.length === 0) input.setStore("status", "complete")
+    if (loading && essentialErrs.length === 0) input.setStore("status", "complete")
+
+    const deferredErrs = errors(await deferredDone)
+    if (deferredErrs.length > 0) console.error("Failed to finish bootstrap deferred tasks", deferredErrs[0])
   })()
 }

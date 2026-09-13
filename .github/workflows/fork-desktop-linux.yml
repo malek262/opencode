@@ -4,11 +4,8 @@ on:
   push:
     branches:
       - sidebar-navigation
-      - fix/desktop-undici-timeout
-      - perf-quickwins
-      - perf-sidebar
-      - perf-streaming
-      - perf-open-latency
+      - perf-renderer-2
+      - perf-desktop-main
   workflow_dispatch:
 
 concurrency:

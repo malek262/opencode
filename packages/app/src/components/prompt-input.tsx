@@ -86,6 +86,9 @@ import type { ReferenceInfo } from "@opencode-ai/sdk/v2/client"
 export { createPromptInputHistory }
 export type { PromptInputControls, PromptInputHistory, PromptInputProps, PromptInputState, PromptInputSubmission }
 
+const RTL_STRONG = /[\u0590-\u05FF\u0600-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
+const LTR_STRONG = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/
+
 const EXAMPLES = [
   "prompt.example.1",
   "prompt.example.2",
@@ -479,11 +482,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const clearEditor = () => {
     editorRef.innerHTML = ""
+    syncEditorDirection()
   }
 
   const setEditorText = (text: string) => {
     clearEditor()
     editorRef.textContent = text
+    syncEditorDirection()
+  }
+
+  // The editor is a contenteditable in an LTR document: without an explicit direction
+  // Arabic input keeps LTR paragraph direction, scrambling mixed lines and left-aligning
+  // RTL text. Follow the first strong character, like dir="auto" does for form controls.
+  const syncEditorDirection = () => {
+    const text = editorRef.textContent ?? ""
+    const rtl = text.search(RTL_STRONG)
+    const ltr = text.search(LTR_STRONG)
+    editorRef.dir = rtl !== -1 && (ltr === -1 || rtl < ltr) ? "rtl" : "ltr"
   }
 
   const focusEditorEnd = () => {
@@ -971,6 +986,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleInput = () => {
+    syncEditorDirection()
     const rawParts = parseFromDOM()
     const images = imageAttachments()
     const cursorPosition = getCursorPosition(editorRef)
@@ -1534,7 +1550,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               onKeyDown={handleKeyDown}
               classList={{
                 "select-text": true,
-                "w-full pl-3 pr-2 pt-2 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
+                "w-full ps-3 pe-2 pt-2 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
                 "[&_[data-type=file]]:text-syntax-property": true,
                 "[&_[data-type=agent]]:text-syntax-type": true,
                 "font-mono!": store.mode === "shell",
@@ -1542,7 +1558,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               style={{ "padding-bottom": space }}
             />
             <div
-              class="absolute top-0 inset-x-0 pl-3 pr-2 pt-2 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate"
+              class="absolute top-0 inset-x-0 ps-3 pe-2 pt-2 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate"
               classList={{ "font-mono!": store.mode === "shell" }}
               style={{ "padding-bottom": space, display: prompt.dirty() ? "none" : undefined }}
             >

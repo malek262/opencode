@@ -608,6 +608,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
                 <span data-slot="option-label">{customLabel()}</span>
                 <textarea
                   ref={focusCustom}
+                  dir="auto"
                   data-slot="question-custom-input"
                   placeholder={customPlaceholder()}
                   value={input()}

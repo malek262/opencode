@@ -6,7 +6,7 @@ Agent and release automation for `malek262/opencode`.
 
 Runs entirely in this repo's GitHub Actions via `anomalyco/opencode/github@latest`
 in `use_github_token` mode (no external app dependency). Model config lives in
-`.github/opencode.json` (MiniMax, OpenAI-compatible endpoint); the key is stored
+`.opencode/opencode.jsonc` (MiniMax, OpenAI-compatible endpoint); the key is stored
 in the `MINIMAX_API_KEY` repo secret.
 
 | Workflow | Trigger | Model | Purpose |

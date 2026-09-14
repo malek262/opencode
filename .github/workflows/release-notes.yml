@@ -1,0 +1,40 @@
+name: release-notes
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to (re)generate notes for"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    if: github.repository == 'malek262/opencode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Generate and attach release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          TAG="${{ github.event.inputs.tag || github.event.release.tag_name }}"
+          PREV="$(gh release list --repo "$REPO" --limit 100 --json tagName,createdAt \
+            -q '[.[] | select(.tagName != "'"$TAG"'")] | sort_by(.createdAt) | last | .tagName')"
+          GENERATED="$(gh api "repos/$REPO/releases/generate-notes" \
+            -f tag_name="$TAG" ${PREV:+-f previous_tag_name="$PREV"} --jq .body)"
+          BODY="$(gh release view "$TAG" --repo "$REPO" --json body -q .body)"
+          MARKER='<!-- auto-notes -->'
+          if [[ "$BODY" == *"$MARKER"* ]]; then
+            KEEP="${BODY%%"$MARKER"*}"
+          else
+            KEEP="$BODY"$'\n\n'"$MARKER"$'\n'
+          fi
+          printf '%s\n%s\n' "$KEEP" "$GENERATED" | gh release edit "$TAG" --repo "$REPO" --notes-file -
+          echo "Notes updated for $TAG (previous: ${PREV:-none})"

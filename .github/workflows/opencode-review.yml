@@ -1,0 +1,46 @@
+name: opencode-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: opencode-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false && github.repository == 'malek262/opencode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Review pull request
+        uses: anomalyco/opencode/github@latest
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{"bash": "deny"}'
+        with:
+          model: minimax/MiniMax-M3
+          use_github_token: true
+          share: false
+          prompt: |
+            Review this pull request against the repository conventions in AGENTS.md.
+            Report only concrete defects this diff introduces: bugs, regressions,
+            broken imports, race conditions, security problems, or violations of the
+            project's immutable/state rules. For each finding give file:line and a
+            one-line suggested fix. Skip style nits and speculation. End with a clear
+            verdict line: "VERDICT: APPROVE" or "VERDICT: CHANGES REQUESTED (n findings)".
+            If there are no findings, still post the verdict line. Do not push commits.

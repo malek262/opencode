@@ -85,7 +85,8 @@ jobs:
           curl -fsS "$LLM_BASE_URL/chat/completions" \
             -H "Authorization: Bearer $MINIMAX_API_KEY" \
             -H "Content-Type: application/json" \
-            -d @/tmp/req.json | jq -r '.choices[0].message.content' > /tmp/analysis.md
+            -d @/tmp/req.json | jq -r '.choices[0].message.content' > /tmp/analysis.raw.md
+          perl -0pe 's{<think>.*?</think>\s*}{}gs' /tmp/analysis.raw.md > /tmp/analysis.md
           head -c 400 /tmp/analysis.md
 
       - name: Compose sticky comment

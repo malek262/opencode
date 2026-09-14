@@ -6,7 +6,6 @@
       "name": "MiniMax",
       "options": {
         "baseURL": "https://api.minimaxi.com/v1",
-        "apiKey": "{env:MINIMAX_API_KEY}",
       },
       "models": {
         "MiniMax-M3": { "name": "MiniMax M3" },

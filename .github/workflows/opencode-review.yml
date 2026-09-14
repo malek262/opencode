@@ -26,6 +26,15 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      - name: Load review prompt template
+        id: prompt
+        run: |
+          {
+            echo 'prompt<<PROMPT_EOF'
+            cat .github/prompts/pr-review.md
+            echo 'PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Review pull request
         uses: anomalyco/opencode/github@latest
         env:
@@ -36,11 +45,4 @@ jobs:
           model: minimax/MiniMax-M3
           use_github_token: true
           share: false
-          prompt: |
-            Review this pull request against the repository conventions in AGENTS.md.
-            Report only concrete defects this diff introduces: bugs, regressions,
-            broken imports, race conditions, security problems, or violations of the
-            project's immutable/state rules. For each finding give file:line and a
-            one-line suggested fix. Skip style nits and speculation. End with a clear
-            verdict line: "VERDICT: APPROVE" or "VERDICT: CHANGES REQUESTED (n findings)".
-            If there are no findings, still post the verdict line. Do not push commits.
+          prompt: ${{ steps.prompt.outputs.prompt }}

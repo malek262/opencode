@@ -1,0 +1,120 @@
+name: ci-doctor
+
+on:
+  workflow_run:
+    workflows: ["pr-checks"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "pr-checks run id to analyze"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-doctor-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      LLM_BASE_URL: https://api.minimaxi.com/v1
+      LLM_MODEL: MiniMax-M3
+    steps:
+      # Default-branch checkout only: this job has secrets and must never execute
+      # PR code. The checkout provides the prompt template.
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve pull request
+        id: pr
+        run: |
+          set -euo pipefail
+          number=""
+          if [ -n "${HEAD_SHA:-}" ]; then
+            number=$(gh api "/repos/$REPO/commits/$HEAD_SHA/pulls" --jq '.[0].number // empty' || true)
+          fi
+          if [ -z "$number" ] && [ -n "${HEAD_BRANCH:-}" ]; then
+            number=$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open --json number --jq '.[0].number // empty')
+          fi
+          if [ -z "$number" ]; then
+            echo "No open pull request for ${HEAD_BRANCH:-?}/${HEAD_SHA:-?}; nothing to comment on."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch failed logs
+        if: steps.pr.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "$REPO" --log-failed > /tmp/failed.log || true
+          tail -c 60000 /tmp/failed.log > /tmp/failed.trimmed.log
+          wc -c /tmp/failed.trimmed.log
+
+      - name: Ask the model
+        if: steps.pr.outputs.found == 'true'
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg model "$LLM_MODEL" \
+            --rawfile template .github/prompts/ci-failure.md \
+            --rawfile logs /tmp/failed.trimmed.log \
+            '{model: $model, max_tokens: 1600, temperature: 0.1,
+              messages: [{role: "user", content: ($template + "\n\n<logs>\n" + $logs + "\n</logs>")}]}' \
+            > /tmp/req.json
+          curl -fsS "$LLM_BASE_URL/chat/completions" \
+            -H "Authorization: Bearer $MINIMAX_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/req.json | jq -r '.choices[0].message.content' > /tmp/analysis.md
+          head -c 400 /tmp/analysis.md
+
+      - name: Compose sticky comment
+        if: steps.pr.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo '<!-- ci-doctor -->'
+            echo '## CI doctor — `pr-checks` failed'
+            echo
+            echo "[Failed run](${{ github.event.workflow_run.html_url }}) · branch \`${HEAD_BRANCH}\` · commit \`${HEAD_SHA:0:9}\`"
+            echo
+            cat /tmp/analysis.md
+          } > /tmp/comment.md
+
+      - name: Find existing doctor comment
+        if: steps.pr.outputs.found == 'true'
+        uses: peter-evans/find-comment@v4
+        id: fc
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: "<!-- ci-doctor -->"
+
+      - name: Publish or update comment
+        if: steps.pr.outputs.found == 'true'
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          edit-mode: replace
+          body-path: /tmp/comment.md

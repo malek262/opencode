@@ -273,9 +273,10 @@ export function PromptInputV2(props: PromptInputV2Props) {
 const RTL_STRONG = /[\u0590-\u05FF\u0600-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
 const LTR_STRONG = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/
 
-// The editor is a contenteditable in an LTR document: without an explicit direction
-// Arabic input keeps LTR paragraph direction, scrambling mixed lines and left-aligning
-// RTL text. Follow the first strong character, like dir="auto" does for form controls.
+// The editor is a contenteditable inside an app-level direction that need not match
+// the typed content: without an explicit direction Arabic input keeps the surrounding
+// paragraph direction, scrambling mixed lines and misaligning RTL text. Follow the
+// first strong character, like dir="auto" does for form controls.
 function syncEditorDirection(editor: HTMLDivElement) {
   const text = editor.textContent ?? ""
   const rtl = text.search(RTL_STRONG)

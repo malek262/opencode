@@ -135,7 +135,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     // Those regions opt in via `data-scrollable`. A region that cannot consume
     // the delta chains the scroll to this scroller instead, which IS leaving
     // the bottom, so only skip when the region actually absorbs the wheel.
-    const el = store.scrollRef
     const target = e.target instanceof Element ? e.target : undefined
     const nested = target?.closest("[data-scrollable]")
     if (el && nested && nested !== el && canConsumeWheel(nested, e)) return

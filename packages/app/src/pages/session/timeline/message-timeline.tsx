@@ -643,11 +643,23 @@ export function MessageTimeline(props: {
     props.onMarkScrollGesture(event.currentTarget)
   }
 
+  // The vendored core keeps a rAF chase loop alive for up to 5s after any
+  // programmatic scrollToEnd, re-aiming at the live bottom every frame with no
+  // user-intent gate; while it lives, every height perturbation teleports the
+  // view back down and fights the wheel. Once the user owns scrolling, drop a
+  // chase that predates the takeover; fresh follow scrolls re-arm their own.
+  const cancelStaleScrollChase = () => {
+    const state = (virtualizer as unknown as { scrollState?: { startedAt: number } | null }).scrollState
+    if (!state || Date.now() - state.startedAt < 100) return
+    ;(virtualizer as unknown as { scrollState: unknown }).scrollState = null
+  }
+
   const handleListScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
     if (prependLoading) updatePrependAnchor()
     props.onScheduleScrollState(event.currentTarget)
     props.onHistoryScroll()
     if (!props.hasScrollGesture()) return
+    if (props.userScrolled()) cancelStaleScrollChase()
     props.onUserScroll()
     props.onAutoScrollHandleScroll()
     props.onMarkScrollGesture(event.currentTarget)

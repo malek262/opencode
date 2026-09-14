@@ -249,6 +249,7 @@ export function MessageTimeline(props: {
   onHistoryScroll: () => void
   onAutoScrollInteraction: (event: MouseEvent) => void
   shouldAnchorBottom: () => boolean
+  userScrolled: () => boolean
   centered: boolean
   setContentRef: (el: HTMLDivElement) => void
   userMessages: UserMessage[]
@@ -490,7 +491,15 @@ export function MessageTimeline(props: {
         })
       })
     }
+    // The vendored core pins the viewport to the end on every item resize while
+    // within its own 80px end window, ignoring app state; that fights a user who
+    // scrolled away during streaming. Suppress the pin up front (wasAtEnd reads
+    // anchorTo) so core's cached offset and the DOM never diverge, while the
+    // above-viewport compensation branch stays intact.
+    const latched = props.userScrolled()
+    if (latched) virtualizer.options.anchorTo = "start"
     resizeItem(index, size)
+    if (latched) virtualizer.options.anchorTo = "end"
     if (root && props.shouldAnchorBottom()) anchorResizedBottom()
   }
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
@@ -1357,6 +1366,7 @@ export function MessageTimeline(props: {
       </div>
       <ScrollView
         viewportRef={bindListRoot}
+        onThumbDragStart={() => props.onMarkScrollGesture(listRoot())}
         onWheel={handleListWheel}
         onTouchStart={handleListTouchStart}
         onTouchMove={handleListTouchMove}

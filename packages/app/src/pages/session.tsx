@@ -2097,6 +2097,7 @@ export default function Page() {
                   shouldAnchorBottom={() =>
                     !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
                   }
+                  userScrolled={() => autoScroll.userScrolled()}
                   centered={centered()}
                   setContentRef={(el) => {
                     content = el

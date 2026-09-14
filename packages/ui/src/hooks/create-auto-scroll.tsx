@@ -10,12 +10,19 @@ export interface AutoScrollOptions {
   bottomThreshold?: number
 }
 
+function canConsumeWheel(nested: Element, event: WheelEvent) {
+  const delta =
+    event.deltaMode === 1 ? event.deltaY * 40 : event.deltaMode === 2 ? event.deltaY * nested.clientHeight : event.deltaY
+  return nested.scrollHeight - nested.clientHeight > 1 && nested.scrollTop + delta > 0
+}
+
 export function createAutoScroll(options: AutoScrollOptions) {
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let autoTimer: ReturnType<typeof setTimeout> | undefined
   let auto: { top: number; time: number } | undefined
   let lastScrollTop = -1
+  let downStreak = 0
 
   const threshold = () => options.bottomThreshold ?? 10
 
@@ -113,14 +120,25 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleWheel = (e: WheelEvent) => {
+    const el = store.scrollRef
+    // A wheel-down while parked at the very bottom is the user re-joining the
+    // stream; wheel events cannot be produced programmatically, so a bottom
+    // writer can never spoof this path.
+    if (e.deltaY > 0 && el && store.userScrolled && distanceFromBottom(el) <= 2) {
+      downStreak = 0
+      setStore("userScrolled", false)
+      return
+    }
     if (e.deltaY >= 0) return
     // If the user is scrolling within a nested scrollable region (tool output,
     // code block, etc), don't treat it as leaving the "follow bottom" mode.
-    // Those regions opt in via `data-scrollable`.
+    // Those regions opt in via `data-scrollable`. A region that cannot consume
+    // the delta chains the scroll to this scroller instead, which IS leaving
+    // the bottom, so only skip when the region actually absorbs the wheel.
     const el = store.scrollRef
     const target = e.target instanceof Element ? e.target : undefined
     const nested = target?.closest("[data-scrollable]")
-    if (el && nested && nested !== el) return
+    if (el && nested && nested !== el && canConsumeWheel(nested, e)) return
     stop()
   }
 
@@ -130,6 +148,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     const top = el.scrollTop
     const movedUp = lastScrollTop >= 0 && top < lastScrollTop - 1
+    const movedDown = lastScrollTop >= 0 && top > lastScrollTop + 1
     lastScrollTop = top
 
     if (!canScroll(el)) {
@@ -142,10 +161,22 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // bottom: high-resolution trackpad/wheel deltas move less than the threshold per
       // event, and re-engaging follow here would immediately undo the wheel handler's
       // stop(), letting every bottom-anchoring writer snap the view back down.
-      if (movedUp) return
+      if (movedUp) {
+        downStreak = 0
+        return
+      }
+      // Programmatic bottom-ward writes (virtualizer end pinning, dock resizes)
+      // surface here as isolated downward events right after the user scrolled
+      // away; clearing the latch on them re-arms every writer and glues the view
+      // to the bottom. Only a sustained user downscroll re-engages follow.
+      downStreak = movedDown ? downStreak + 1 : 0
+      if (downStreak < 2) return
+      downStreak = 0
       if (store.userScrolled) setStore("userScrolled", false)
       return
     }
+
+    downStreak = 0
 
     // Ignore scroll events triggered by our own scrollToBottom calls.
     if (!store.userScrolled && isAuto(el)) {

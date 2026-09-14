@@ -22,6 +22,9 @@ hunk before judging a change.
 
 ## Output format (strict)
 
+Output only the final comment. Never include internal reasoning or `<think>`
+blocks in the posted comment.
+
 Post exactly one comment shaped like:
 
 ```

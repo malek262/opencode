@@ -8,7 +8,6 @@ Agent, CI, and release automation for `malek262/opencode`.
 pull_request ──► pr-checks.yml
                    ├─ typecheck                (bun turbo typecheck)
                    ├─ unit (linux)             (bun turbo test + check:generated + httpapi gates)
-                   ├─ unit (windows)           (bun turbo test)
                    ├─ e2e (linux)              (playwright, quarantine via --grep-invert,
                    │                            artifacts: playwright-report, test-results, junit xml)
                    ├─ Test results             (mikepenz/action-junit-report check + PR comment)

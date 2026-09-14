@@ -40,10 +40,12 @@ jobs:
       fail-fast: false
       matrix:
         settings:
+          # Windows leg dropped: this fork ships linux-only artifacts and the
+          # windows runner repeatedly fails upstream core tests for
+          # environmental reasons (bun cache ENOTEMPTY, git clone file://,
+          # ripgrep Expand-Archive). Keeps the Required signal honest.
           - name: linux
             host: ubuntu-latest
-          - name: windows
-            host: windows-latest
     runs-on: ${{ matrix.settings.host }}
     timeout-minutes: 60
     defaults:
